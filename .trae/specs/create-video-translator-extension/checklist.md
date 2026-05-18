@@ -1,0 +1,42 @@
+- [x] 项目脚手架可正常构建（webpack build 无错误）
+- [x] manifest.json 声明了正确的权限（storage, activeTab, scripting, host_permissions）
+- [x] HTML5 `<track>` 字幕检测与 WebVTT/SRT 解析功能正常
+- [x] YouTube 平台字幕提取功能正常
+- [x] Bilibili 平台字幕提取功能正常
+- [x] DOM 字幕 MutationObserver 监听功能正常
+- [x] 字幕检测调度器按优先级依次尝试各检测方式
+- [x] 音频捕获模块可从 `<video>` 元素获取音频流并分段
+- [x] ASR 抽象接口定义完整，各提供商实现该接口
+- [x] OpenAI Whisper ASR 提供商可正确调用 API 并返回识别结果
+- [x] Google Speech-to-Text ASR 提供商可正确调用 API 并返回识别结果
+- [x] Web Speech API 回退方案可正常工作
+- [x] ASR 调度器按优先级切换提供商，失败时自动回退
+- [x] 翻译服务抽象接口定义完整，各提供商实现该接口
+- [x] Google Cloud Translation 提供商可正确调用 API 并返回翻译结果
+- [x] DeepL 翻译提供商可正确调用 API 并返回翻译结果
+- [x] OpenAI GPT 翻译提供商可正确调用 API 并返回翻译结果
+- [x] 翻译调度器支持主备切换和速率控制
+- [x] 翻译缓存可正确存储和读取，7 天后过期
+- [x] 批量翻译优化可将相邻短句合并减少 API 调用
+- [x] 字幕叠加层使用 Shadow DOM 隔离，不被页面 CSS 污染
+- [x] 字幕同步机制可跟随 video.currentTime 正确显示/隐藏
+- [x] 视频跳转（seek）时字幕可正确重新定位
+- [x] 字幕样式（字体大小、颜色、背景、位置）可自定义
+- [x] Content Script 可检测页面中的 `<video>` 元素
+- [x] 有字幕路径（检测 → 翻译 → 渲染）端到端流程正常
+- [x] 无字幕路径（音频捕获 → ASR → 翻译 → 渲染）端到端流程正常
+- [x] Content Script 与 Background 消息通信正常
+- [x] Background Service Worker 可正确路由和分发消息
+- [x] Background 可代理 ASR 和翻译 API 调用
+- [x] 错误处理与重试逻辑（指数退避 + 自动切换）正常工作
+- [x] Popup 显示视频检测状态（有视频/无视频/有字幕/无字幕）
+- [x] Popup 翻译开关可控制翻译的开始和停止
+- [x] Popup 语言选择（源语言 + 目标语言）功能正常
+- [x] Popup 字幕样式快捷调整功能正常
+- [x] Popup 错误状态提示正常显示
+- [x] Options 页面 API Key 配置可保存和加载
+- [x] Options 页面语言偏好设置功能正常
+- [x] Options 页面字幕样式详细设置功能正常
+- [x] Options 页面高级设置（分段时长、缓存、自动切换）功能正常
+- [x] API Key 未配置时 Popup 显示配置引导
+- [x] 网络断开时暂停处理，恢复后自动继续
