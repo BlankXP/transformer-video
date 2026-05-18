@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Translator</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <h1>🎬 Video Translator</h1>
+    </header>
+
+    <div class="status-section">
+      <div id="status-indicator" class="status-indicator status-none">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-text">检测中...</span>
+      </div>
+      <div id="subtitle-source" class="subtitle-source" style="display:none;">
+        字幕来源: <span id="source-text"></span>
+      </div>
+    </div>
+
+    <div class="control-section">
+      <div class="toggle-row">
+        <span>翻译</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="translate-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="language-section">
+      <div class="language-row">
+        <label for="source-lang">源语言</label>
+        <select id="source-lang">
+          <option value="auto">自动检测</option>
+        </select>
+      </div>
+      <div class="language-row">
+        <label for="target-lang">目标语言</label>
+        <select id="target-lang">
+        </select>
+      </div>
+    </div>
+
+    <div class="style-section">
+      <div class="style-row">
+        <label>字幕大小</label>
+        <input type="range" id="font-size" min="12" max="32" value="18">
+        <span id="font-size-value">18px</span>
+      </div>
+      <div class="style-row">
+        <label>字幕位置</label>
+        <select id="subtitle-position">
+          <option value="bottom">底部</option>
+          <option value="top">顶部</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="error-section" class="error-section" style="display:none;">
+      <span id="error-text"></span>
+      <button id="error-action" class="btn-link">前往设置</button>
+    </div>
+
+    <footer class="popup-footer">
+      <button id="settings-btn" class="btn-icon" title="设置">⚙️</button>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
