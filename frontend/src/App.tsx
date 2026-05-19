@@ -6,7 +6,7 @@ import VideoPlayer from "./components/VideoPlayer";
 import DownloadPanel from "./components/DownloadPanel";
 import useTask from "./hooks/useTask";
 import useWebSocket from "./hooks/useWebSocket";
-import { saveSubtitle, burnVideo } from "./api/client";
+import { saveSubtitle } from "./api/client";
 import type { SubtitleEntry, ProcessRequest } from "./types";
 
 const API_BASE_URL = "http://localhost:8000";
@@ -16,7 +16,6 @@ function App() {
   const { stage, progress, message } = useWebSocket(taskId);
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [burning, setBurning] = useState(false);
 
   useEffect(() => {
     if (stage === "completed" && taskId) {
@@ -28,7 +27,7 @@ function App() {
     if (status?.result) {
       setSubtitles(status.result.subtitles || []);
       if (status.result.video_path) {
-        setVideoUrl(`${API_BASE_URL}/videos/${taskId}/output.mp4`);
+        setVideoUrl(`${API_BASE_URL}/videos/${taskId}/video.mp4`);
       }
     }
   }, [status, taskId]);
@@ -49,19 +48,6 @@ function App() {
     }
   };
 
-  const handleBurn = async () => {
-    if (!taskId) return;
-    setBurning(true);
-    try {
-      await burnVideo(taskId);
-      setVideoUrl(`${API_BASE_URL}/videos/${taskId}/output.mp4`);
-    } catch {
-      void 0;
-    } finally {
-      setBurning(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b border-gray-200">
@@ -77,8 +63,8 @@ function App() {
           <ProgressPanel stage={stage} progress={progress} message={message} />
           <VideoPlayer videoUrl={videoUrl} />
         </div>
-        <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading || burning} />
-        <DownloadPanel taskId={taskId} subtitles={subtitles} onBurn={handleBurn} burning={burning} />
+        <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading} />
+        <DownloadPanel taskId={taskId} subtitles={subtitles} />
       </main>
     </div>
   );

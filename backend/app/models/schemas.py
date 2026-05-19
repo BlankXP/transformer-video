@@ -32,7 +32,6 @@ class TaskStatus(BaseModel):
         "recognizing",
         "translating",
         "generating_subtitle",
-        "burning_subtitle",
         "completed",
         "failed",
     ]
