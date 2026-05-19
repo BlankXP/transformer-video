@@ -20,6 +20,9 @@ ENV/
 
 node_modules/
 
+.trae/
+docs/
+
 .idea/
 .vscode/
 *.swp
