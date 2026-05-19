@@ -1,5 +1,4 @@
 import uuid
-from pathlib import Path
 from typing import Dict, Optional, Callable
 from app.config import get_settings
 from app.models.schemas import TaskStatus, TaskResult, SubtitleEntry, ProcessRequest
@@ -8,8 +7,7 @@ from app.services.audio_extractor import AudioExtractor
 from app.services.speech_recognition import SpeechRecognitionService
 from app.services.translator import TranslatorService
 from app.services.subtitle_generator import SubtitleGenerator
-from app.services.video_burner import VideoBurner
-from app.utils.file_manager import create_task_dir, get_task_dir
+from app.utils.file_manager import create_task_dir
 
 
 class PipelineProcessor:
@@ -58,48 +56,47 @@ class PipelineProcessor:
             video_path = task_dir / "video.mp4"
             audio_path = task_dir / "audio.wav"
             srt_path = task_dir / "subtitles.srt"
-            output_path = task_dir / "output.mp4"
 
             self._notify_progress(task_id, "downloading", 0.0, "开始下载视频")
             downloader = Downloader(
                 output_dir=task_dir,
                 progress_callback=lambda p, m: self._notify_progress(
-                    task_id, "downloading", 0.0 + p * 0.20, m
+                    task_id, "downloading", 0.0 + p * 0.25, m
                 ),
             )
             downloaded_path = downloader.download(request.url)
             if downloaded_path != video_path:
                 downloaded_path.rename(video_path)
-            self._notify_progress(task_id, "downloading", 0.20, "视频下载完成")
+            self._notify_progress(task_id, "downloading", 0.25, "视频下载完成")
 
-            self._notify_progress(task_id, "extracting_audio", 0.20, "开始提取音频")
+            self._notify_progress(task_id, "extracting_audio", 0.25, "开始提取音频")
             extractor = AudioExtractor()
             extractor.extract(video_path, audio_path)
-            self._notify_progress(task_id, "extracting_audio", 0.25, "音频提取完成")
+            self._notify_progress(task_id, "extracting_audio", 0.30, "音频提取完成")
 
-            self._notify_progress(task_id, "recognizing", 0.25, "开始语音识别")
+            self._notify_progress(task_id, "recognizing", 0.30, "开始语音识别")
             recognizer = SpeechRecognitionService(
                 api_key=self.settings.DASHSCOPE_API_KEY,
                 progress_callback=lambda p, m: self._notify_progress(
-                    task_id, "recognizing", 0.25 + p * 0.30, m
+                    task_id, "recognizing", 0.30 + p * 0.35, m
                 ),
             )
             recognized = recognizer.recognize(audio_path, request.source_language)
-            self._notify_progress(task_id, "recognizing", 0.55, "语音识别完成")
+            self._notify_progress(task_id, "recognizing", 0.65, "语音识别完成")
 
-            self._notify_progress(task_id, "translating", 0.55, "开始翻译字幕")
+            self._notify_progress(task_id, "translating", 0.65, "开始翻译字幕")
             translator = TranslatorService(
                 api_key=self.settings.DASHSCOPE_API_KEY,
                 progress_callback=lambda p, m: self._notify_progress(
-                    task_id, "translating", 0.55 + p * 0.20, m
+                    task_id, "translating", 0.65 + p * 0.25, m
                 ),
             )
             translated = translator.translate(
                 recognized, request.source_language, request.target_language
             )
-            self._notify_progress(task_id, "translating", 0.75, "字幕翻译完成")
+            self._notify_progress(task_id, "translating", 0.90, "字幕翻译完成")
 
-            self._notify_progress(task_id, "generating_subtitle", 0.75, "开始生成字幕文件")
+            self._notify_progress(task_id, "generating_subtitle", 0.90, "开始生成字幕文件")
             subtitle_entries = []
             for i, item in enumerate(translated, 1):
                 subtitle_entries.append(SubtitleEntry(
@@ -111,16 +108,11 @@ class PipelineProcessor:
                 ))
             generator = SubtitleGenerator()
             generator.generate_srt(subtitle_entries, srt_path, bilingual=True)
-            self._notify_progress(task_id, "generating_subtitle", 0.80, "字幕文件生成完成")
-
-            self._notify_progress(task_id, "burning_subtitle", 0.80, "开始烧录字幕")
-            burner = VideoBurner()
-            burner.burn_subtitles(video_path, srt_path, output_path)
-            self._notify_progress(task_id, "burning_subtitle", 1.00, "字幕烧录完成")
+            self._notify_progress(task_id, "generating_subtitle", 1.00, "字幕文件生成完成")
 
             duration = extractor.get_duration(audio_path)
             result = TaskResult(
-                video_path=str(output_path),
+                video_path=str(video_path),
                 srt_path=str(srt_path),
                 subtitles=subtitle_entries,
                 duration=duration,
@@ -137,24 +129,11 @@ class PipelineProcessor:
             return False
         result = self.results[task_id]
         result.subtitles = [SubtitleEntry(**s) for s in subtitles]
-        task_dir = get_task_dir(task_id)
+        task_dir = create_task_dir(task_id)
         srt_path = task_dir / "subtitles.srt"
         generator = SubtitleGenerator()
         generator.generate_srt(result.subtitles, srt_path, bilingual=True)
         result.srt_path = str(srt_path)
-        return True
-
-    def burn_with_updated_subtitles(self, task_id: str) -> bool:
-        if task_id not in self.results:
-            return False
-        result = self.results[task_id]
-        task_dir = get_task_dir(task_id)
-        video_path = task_dir / "video.mp4"
-        srt_path = Path(result.srt_path)
-        output_path = task_dir / "output.mp4"
-        burner = VideoBurner()
-        burner.burn_subtitles(video_path, srt_path, output_path)
-        result.video_path = str(output_path)
         return True
 
     @staticmethod

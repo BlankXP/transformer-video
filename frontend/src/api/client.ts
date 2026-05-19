@@ -20,21 +20,10 @@ export function getSubtitleSrtUrl(taskId: string): string {
   return `${API_BASE_URL}/api/tasks/${taskId}/subtitle`;
 }
 
-export function getVideoDownloadUrl(taskId: string): string {
-  return `${API_BASE_URL}/api/tasks/${taskId}/video`;
-}
-
 export async function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): Promise<void> {
   await fetch(`${API_BASE_URL}/api/tasks/${taskId}/subtitle`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subtitles }),
   });
-}
-
-export async function burnVideo(taskId: string): Promise<{ task_id: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}/burn`, {
-    method: 'POST',
-  });
-  return response.json();
 }

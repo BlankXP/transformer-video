@@ -12,7 +12,6 @@ const STAGES: { key: TaskStage; label: string }[] = [
   { key: "recognizing", label: "语音识别" },
   { key: "translating", label: "翻译字幕" },
   { key: "generating_subtitle", label: "生成字幕" },
-  { key: "burning_subtitle", label: "烧录字幕" },
 ];
 
 function ProgressPanel({ stage, progress, message }: Props) {

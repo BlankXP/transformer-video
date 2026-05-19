@@ -4,7 +4,6 @@ export type TaskStage =
   | "recognizing"
   | "translating"
   | "generating_subtitle"
-  | "burning_subtitle"
   | "completed"
   | "failed";
 
