@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     TEMP_DIR: str = "./temp"
     MAX_VIDEO_DURATION: int = 3600
     AUDIO_SEGMENT_DURATION: int = 300
+    ASR_MODEL: str = "paraformer-v2"
+    TRANSLATION_MODEL: str = "qwen-plus"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

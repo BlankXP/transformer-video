@@ -1,6 +1,7 @@
 import dashscope
 from dashscope import Generation
 from typing import Callable, Optional, List
+from app.config import get_settings
 
 
 class TranslatorService:
@@ -8,6 +9,7 @@ class TranslatorService:
         dashscope.api_key = api_key
         self.progress_callback = progress_callback
         self.batch_size = 50
+        self.model = get_settings().TRANSLATION_MODEL
 
     def translate(
         self,
@@ -56,7 +58,7 @@ class TranslatorService:
         for attempt in range(3):
             try:
                 response = Generation.call(
-                    model="qwen-plus",
+                    model=self.model,
                     prompt=prompt,
                 )
 

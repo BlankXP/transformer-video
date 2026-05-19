@@ -11,6 +11,7 @@ class SpeechRecognitionService:
         dashscope.api_key = api_key
         self.progress_callback = progress_callback
         self.segment_duration = 300
+        self.model = get_settings().ASR_MODEL
 
     def recognize(self, audio_path: Path, language: str = "zh") -> List[dict]:
         from app.config import get_settings
@@ -29,7 +30,7 @@ class SpeechRecognitionService:
         for attempt in range(3):
             try:
                 recognition = Recognition(
-                    model="paraformer-v2",
+                    model=self.model,
                     format="wav",
                     sample_rate=16000,
                     language_hint=language,
