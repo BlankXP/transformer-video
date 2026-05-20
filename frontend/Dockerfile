@@ -10,7 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm install --unsafe-perm
 
 COPY . .
-RUN chmod -R +x node_modules/.bin/ && npm run build
+RUN npx tsc -b && npx vite build
 
 FROM nginx:alpine
 
