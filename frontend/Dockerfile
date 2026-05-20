@@ -3,10 +3,10 @@ FROM node:22-slim AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm install --unsafe-perm
 
 COPY . .
-RUN npm run build
+RUN chmod +x node_modules/.bin/tsc && npm run build
 
 FROM nginx:alpine
 
