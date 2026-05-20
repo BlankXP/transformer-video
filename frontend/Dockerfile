@@ -1,5 +1,7 @@
 FROM node:22-slim AS build
 
+USER root
+
 WORKDIR /app
 
 RUN npm config set registry https://registry.npmmirror.com
@@ -8,7 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm install --unsafe-perm
 
 COPY . .
-RUN chmod +x node_modules/.bin/tsc && npm run build
+RUN chmod -R +x node_modules/.bin/ && npm run build
 
 FROM nginx:alpine
 
