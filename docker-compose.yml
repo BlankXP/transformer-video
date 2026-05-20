@@ -6,8 +6,8 @@ services:
       - "8000:8000"
     volumes:
       - temp-data:/app/temp
-    env_file:
-      - ./backend/.env
+    environment:
+      - APP_DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
     restart: unless-stopped
 
   frontend:
