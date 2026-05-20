@@ -1,0 +1,10 @@
+server:
+  port: 8000
+
+app:
+  dashscope-api-key: ""
+  temp-dir: "./temp"
+  max-video-duration: 3600
+  audio-segment-duration: 300
+  asr-model: "paraformer-v2"
+  translation-model: "qwen-plus"
