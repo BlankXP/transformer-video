@@ -10,7 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm install --unsafe-perm
 
 COPY . .
-RUN npx tsc -b && npx vite build
+RUN node ./node_modules/typescript/bin/tsc -b && node ./node_modules/vite/bin/vite.js build
 
 FROM nginx:alpine
 
