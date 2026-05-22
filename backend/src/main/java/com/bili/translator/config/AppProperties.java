@@ -7,28 +7,58 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "app")
 public class AppProperties {
 
-    private String dashscopeApiKey = "";
+    private String dashscopeApiKey;
     private String tempDir = "./temp";
     private int maxVideoDuration = 3600;
     private int audioSegmentDuration = 300;
-    private String asrModel = "paraformer-v2";
+    private String asrModel = "paraformer-realtime-v2";
     private String translationModel = "qwen-plus";
 
-    public String getDashscopeApiKey() { return dashscopeApiKey; }
-    public void setDashscopeApiKey(String dashscopeApiKey) { this.dashscopeApiKey = dashscopeApiKey; }
+    public String getDashscopeApiKey() {
+        return dashscopeApiKey;
+    }
 
-    public String getTempDir() { return tempDir; }
-    public void setTempDir(String tempDir) { this.tempDir = tempDir; }
+    public void setDashscopeApiKey(String dashscopeApiKey) {
+        this.dashscopeApiKey = dashscopeApiKey;
+    }
 
-    public int getMaxVideoDuration() { return maxVideoDuration; }
-    public void setMaxVideoDuration(int maxVideoDuration) { this.maxVideoDuration = maxVideoDuration; }
+    public String getTempDir() {
+        return tempDir;
+    }
 
-    public int getAudioSegmentDuration() { return audioSegmentDuration; }
-    public void setAudioSegmentDuration(int audioSegmentDuration) { this.audioSegmentDuration = audioSegmentDuration; }
+    public void setTempDir(String tempDir) {
+        this.tempDir = tempDir;
+    }
 
-    public String getAsrModel() { return asrModel; }
-    public void setAsrModel(String asrModel) { this.asrModel = asrModel; }
+    public int getMaxVideoDuration() {
+        return maxVideoDuration;
+    }
 
-    public String getTranslationModel() { return translationModel; }
-    public void setTranslationModel(String translationModel) { this.translationModel = translationModel; }
+    public void setMaxVideoDuration(int maxVideoDuration) {
+        this.maxVideoDuration = maxVideoDuration;
+    }
+
+    public int getAudioSegmentDuration() {
+        return audioSegmentDuration;
+    }
+
+    public void setAudioSegmentDuration(int audioSegmentDuration) {
+        this.audioSegmentDuration = audioSegmentDuration;
+    }
+
+    public String getAsrModel() {
+        return asrModel;
+    }
+
+    public void setAsrModel(String asrModel) {
+        this.asrModel = asrModel;
+    }
+
+    public String getTranslationModel() {
+        return translationModel;
+    }
+
+    public void setTranslationModel(String translationModel) {
+        this.translationModel = translationModel;
+    }
 }
