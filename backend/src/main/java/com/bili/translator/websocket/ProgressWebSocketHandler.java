@@ -1,7 +1,7 @@
 package com.bili.translator.websocket;
 
 import com.bili.translator.model.TaskStatus;
-import com.bili.translator.service.PipelineProcessor;
+import com.bili.translator.pipeline.PipelineProcessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

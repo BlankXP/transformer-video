@@ -111,7 +111,17 @@ public class SpeechRecognitionService {
                 continue;
             }
 
-            List<RecognizedItem> results = recognizeSingle(segmentPath, language);
+            List<RecognizedItem> results;
+            try {
+                results = recognizeSingle(segmentPath, language);
+            } catch (Exception e) {
+                log.warn("第{}段语音识别失败，跳过该段: {}", i + 1, e.getMessage());
+                Files.deleteIfExists(segmentPath);
+                if (progressCallback != null) {
+                    progressCallback.accept((float)(i + 1) / segments, "第" + (i + 1) + "段识别失败已跳过 " + (i + 1) + "/" + segments);
+                }
+                continue;
+            }
             for (RecognizedItem item : results) {
                 item.setStartTime(item.getStartTime() + start);
                 item.setEndTime(item.getEndTime() + start);

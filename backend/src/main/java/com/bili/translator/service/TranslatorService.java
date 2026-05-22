@@ -69,7 +69,16 @@ public class TranslatorService {
             List<SpeechRecognitionService.RecognizedItem> batch = nonEmptyItems.subList(i, end);
             int batchNum = i / BATCH_SIZE + 1;
 
-            List<String> translatedTexts = translateBatch(batch, sourceLanguage, targetLanguage);
+            List<String> translatedTexts;
+            try {
+                translatedTexts = translateBatch(batch, sourceLanguage, targetLanguage);
+            } catch (Exception e) {
+                log.warn("第{}批翻译失败，跳过该批: {}", batchNum, e.getMessage());
+                translatedTexts = new ArrayList<>();
+                for (int j = 0; j < batch.size(); j++) {
+                    translatedTexts.add("");
+                }
+            }
 
             for (int j = 0; j < batch.size(); j++) {
                 SpeechRecognitionService.RecognizedItem sub = batch.get(j);
