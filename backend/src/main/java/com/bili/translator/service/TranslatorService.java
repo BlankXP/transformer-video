@@ -73,11 +73,8 @@ public class TranslatorService {
             try {
                 translatedTexts = translateBatch(batch, sourceLanguage, targetLanguage);
             } catch (Exception e) {
-                log.warn("第{}批翻译失败，跳过该批: {}", batchNum, e.getMessage());
-                translatedTexts = new ArrayList<>();
-                for (int j = 0; j < batch.size(); j++) {
-                    translatedTexts.add("");
-                }
+                log.warn("第{}批翻译失败，尝试拆分为更小批次重试: {}", batchNum, e.getMessage());
+                translatedTexts = translateWithSubBatches(batch, sourceLanguage, targetLanguage, batchNum);
             }
 
             for (int j = 0; j < batch.size(); j++) {
@@ -136,6 +133,38 @@ public class TranslatorService {
             }
         }
         throw new RuntimeException("翻译失败");
+    }
+
+    private List<String> translateWithSubBatches(List<SpeechRecognitionService.RecognizedItem> batch,
+                                                   String sourceLanguage, String targetLanguage, int batchNum) {
+        List<String> allTranslated = new ArrayList<>();
+        int subSize = Math.max(1, batch.size() / 2);
+
+        if (subSize >= batch.size()) {
+            log.warn("第{}批已无法继续拆分(每批仅{}条)，该批翻译结果置空", batchNum, batch.size());
+            for (int i = 0; i < batch.size(); i++) {
+                allTranslated.add("");
+            }
+            return allTranslated;
+        }
+
+        log.info("第{}批拆分为子批(每批{}条)重试", batchNum, subSize);
+
+        for (int i = 0; i < batch.size(); i += subSize) {
+            int end = Math.min(i + subSize, batch.size());
+            List<SpeechRecognitionService.RecognizedItem> subBatch = batch.subList(i, end);
+            try {
+                List<String> subResult = translateBatch(subBatch, sourceLanguage, targetLanguage);
+                allTranslated.addAll(subResult);
+                log.info("第{}批子批{}/{}重试成功, {}条", batchNum, (i / subSize) + 1, (batch.size() + subSize - 1) / subSize, subBatch.size());
+            } catch (Exception e) {
+                log.warn("第{}批子批翻译失败，递归拆分重试: {}", batchNum, e.getMessage());
+                List<String> deeperResult = translateWithSubBatches(subBatch, sourceLanguage, targetLanguage, batchNum * 100 + i);
+                allTranslated.addAll(deeperResult);
+            }
+        }
+
+        return allTranslated;
     }
 
     /**
