@@ -115,12 +115,12 @@ public class SpeechRecognitionService {
             try {
                 results = recognizeSingle(segmentPath, language);
             } catch (Exception e) {
-                log.warn("第{}段语音识别失败，尝试拆分为更小分段重试: {}", i + 1, e.getMessage());
+                log.warn("第{}段语音识别失败，跳过该段: {}", i + 1, e.getMessage());
                 Files.deleteIfExists(segmentPath);
-                results = recognizeWithSubSegments(audioPath, language, start, segmentDuration, i);
-                if (results.isEmpty()) {
-                    log.warn("第{}段拆分重试后仍无结果，跳过该段", i + 1);
+                if (progressCallback != null) {
+                    progressCallback.accept((float)(i + 1) / segments, "第" + (i + 1) + "段识别失败已跳过 " + (i + 1) + "/" + segments);
                 }
+                continue;
             }
             for (RecognizedItem item : results) {
                 item.setStartTime(item.getStartTime() + start);
@@ -137,63 +137,6 @@ public class SpeechRecognitionService {
 
         log.info("长音频分段识别全部完成, 共识别到{}条句子", allResults.size());
         return allResults;
-    }
-
-    private List<RecognizedItem> recognizeWithSubSegments(Path audioPath, String language, double segmentStart, int segmentDuration, int segmentIndex) {
-        List<RecognizedItem> subResults = new ArrayList<>();
-        int subDuration = segmentDuration / 2;
-        if (subDuration < 10) {
-            log.warn("第{}段已无法继续拆分(子段时长{}s)，放弃该段", segmentIndex + 1, subDuration);
-            return subResults;
-        }
-
-        int subCount = (segmentDuration + subDuration - 1) / subDuration;
-        log.info("第{}段拆分为{}个子段(每个{}s)重试", segmentIndex + 1, subCount, subDuration);
-
-        for (int s = 0; s < subCount; s++) {
-            double subStart = segmentStart + s * subDuration;
-            int actualDuration = Math.min(subDuration, segmentDuration - s * subDuration);
-            if (actualDuration <= 0) break;
-
-            Path subSegmentPath = audioPath.getParent().resolve("segment_" + segmentIndex + "_sub_" + s + ".wav");
-            try {
-                ProcessBuilder pb = new ProcessBuilder(
-                    "ffmpeg", "-y",
-                    "-i", audioPath.toString(),
-                    "-ss", String.valueOf(subStart),
-                    "-t", String.valueOf(actualDuration),
-                    "-ar", "16000", "-ac", "1",
-                    subSegmentPath.toString()
-                );
-                pb.redirectErrorStream(true);
-                Process process = pb.start();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    while (reader.readLine() != null) {}
-                }
-                process.waitFor();
-
-                if (!Files.exists(subSegmentPath)) {
-                    log.warn("第{}段子段{}/{}切割后文件不存在，跳过", segmentIndex + 1, s + 1, subCount);
-                    continue;
-                }
-
-                List<RecognizedItem> results = recognizeSingle(subSegmentPath, language);
-                for (RecognizedItem item : results) {
-                    item.setStartTime(item.getStartTime() + subStart);
-                    item.setEndTime(item.getEndTime() + subStart);
-                }
-                subResults.addAll(results);
-                log.info("第{}段子段{}/{}重试成功, 识别到{}条句子", segmentIndex + 1, s + 1, subCount, results.size());
-            } catch (Exception subEx) {
-                log.warn("第{}段子段{}/{}重试仍失败: {}", segmentIndex + 1, s + 1, subCount, subEx.getMessage());
-                List<RecognizedItem> deeperResults = recognizeWithSubSegments(audioPath, language, subStart, actualDuration, segmentIndex * 100 + s);
-                subResults.addAll(deeperResults);
-            } finally {
-                try { Files.deleteIfExists(subSegmentPath); } catch (Exception ignored) {}
-            }
-        }
-
-        return subResults;
     }
 
     /**

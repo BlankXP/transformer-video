@@ -44,6 +44,25 @@ public class SubtitleController {
                 .body(resource);
     }
 
+    @GetMapping("/{taskId}/txt")
+    public ResponseEntity<Resource> downloadRecognizedText(@PathVariable String taskId) {
+        TaskResult result = processor.getTaskResult(taskId);
+        if (result == null || result.getRecognizedTextPath() == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Path txtPath = Path.of(result.getRecognizedTextPath());
+        if (!Files.exists(txtPath)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Resource resource = new FileSystemResource(txtPath);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + taskId + "_recognized.txt\"")
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(resource);
+    }
+
     @PutMapping("/{taskId}")
     public ResponseEntity<Map<String, String>> saveSubtitle(@PathVariable String taskId, @RequestBody List<SubtitleEntry> subtitles) {
         boolean success = processor.updateSubtitles(taskId, subtitles);

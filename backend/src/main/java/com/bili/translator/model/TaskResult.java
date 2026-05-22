@@ -6,6 +6,7 @@ public class TaskResult {
 
     private String videoPath;
     private String srtPath;
+    private String recognizedTextPath;
     private List<SubtitleEntry> subtitles;
     private double duration;
 
@@ -23,6 +24,14 @@ public class TaskResult {
 
     public void setSrtPath(String srtPath) {
         this.srtPath = srtPath;
+    }
+
+    public String getRecognizedTextPath() {
+        return recognizedTextPath;
+    }
+
+    public void setRecognizedTextPath(String recognizedTextPath) {
+        this.recognizedTextPath = recognizedTextPath;
     }
 
     public List<SubtitleEntry> getSubtitles() {
