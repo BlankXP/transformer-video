@@ -1,9 +1,8 @@
 target/
-!.mvn/wrapper/maven-wrapper.jar
 *.class
 *.jar
-*.log
-temp/
+*.war
 .env
+temp/
 .idea/
 *.iml
