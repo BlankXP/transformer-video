@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BiliSub — B站视频字幕翻译</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-deep: #0a0e17;
+  --bg-surface: #111827;
+  --bg-card: rgba(17, 24, 39, 0.7);
+  --bg-elevated: #1a2236;
+  --border: rgba(56, 189, 248, 0.12);
+  --border-active: rgba(56, 189, 248, 0.35);
+  --accent: #38bdf8;
+  --accent-glow: rgba(56, 189, 248, 0.25);
+  --accent-deep: #0284c7;
+  --success: #34d399;
+  --success-glow: rgba(52, 211, 153, 0.25);
+  --error: #f87171;
+  --error-glow: rgba(248, 113, 113, 0.25);
+  --warning: #fbbf24;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --font-display: 'Sora', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+html { font-size: 16px; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(ellipse at 20% 20%, rgba(56, 189, 248, 0.06) 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 80%, rgba(99, 102, 241, 0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 50%, rgba(56, 189, 248, 0.02) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app { position: relative; z-index: 1; }
+
+/* ===== HEADER ===== */
+.header {
+  padding: 1.25rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  background: rgba(10, 14, 23, 0.8);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), #818cf8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 16px;
+  color: #fff;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.logo-text {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.logo-tag {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-left: -0.1rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success-glow);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ===== MAIN LAYOUT ===== */
+.main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ===== INPUT SECTION ===== */
+.input-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  backdrop-filter: blur(12px);
+  position: relative;
+  overflow: hidden;
+}
+
+.input-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.6;
+}
+
+.input-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.input-group {
+  flex: 1;
+}
+
+.input-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+
+.input-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-field::placeholder { color: var(--text-muted); }
+.input-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.select-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.select-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.lang-row {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  align-items: flex-end;
+}
+
+.lang-group { flex: 1; }
+
+.swap-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-deep);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+.swap-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.submit-btn {
+  padding: 0.75rem 2.5rem;
+  background: linear-gradient(135deg, var(--accent), #818cf8);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.25s;
+  white-space: nowrap;
+  box-shadow: 0 4px 15px var(--accent-glow);
+}
+
+.submit-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 25px var(--accent-glow);
+}
+
+.submit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ===== PIPELINE PROGRESS ===== */
+.pipeline-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.75rem 2rem;
+  backdrop-filter: blur(12px);
+}
+
+.pipeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.pipeline-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pipeline-message {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.pipeline-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  position: relative;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  position: relative;
+}
+
+.pipeline-step:not(:last-child)::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+  margin: 0 0.5rem;
+  transition: background 0.4s;
+}
+
+.pipeline-step.done:not(:last-child)::after {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success-glow);
+}
+
+.pipeline-step.active:not(:last-child)::after {
+  background: linear-gradient(90deg, var(--accent), var(--border));
+}
+
+.step-dot {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: all 0.3s;
+  position: relative;
+}
+
+.pipeline-step.done .step-dot {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+  box-shadow: 0 0 12px var(--success-glow);
+}
+
+.pipeline-step.active .step-dot {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 15px var(--accent-glow);
+  animation: pulse-ring 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 15px var(--accent-glow); }
+  50% { box-shadow: 0 0 25px var(--accent-glow), 0 0 0 6px rgba(56, 189, 248, 0.1); }
+}
+
+.pipeline-step.failed .step-dot {
+  border-color: var(--error);
+  color: var(--error);
+  box-shadow: 0 0 12px var(--error-glow);
+}
+
+.step-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+
+.pipeline-step.done .step-label { color: var(--success); }
+.pipeline-step.active .step-label { color: var(--accent); font-weight: 500; }
+.pipeline-step.failed .step-label { color: var(--error); }
+
+.progress-bar-wrap {
+  margin-top: 1.25rem;
+  background: rgba(56, 189, 248, 0.06);
+  border-radius: 6px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent), #818cf8);
+  transition: width 0.4s ease;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.progress-bar-fill.complete {
+  background: linear-gradient(90deg, var(--success), #6ee7b7);
+  box-shadow: 0 0 10px var(--success-glow);
+}
+
+.progress-bar-fill.failed {
+  background: var(--error);
+  box-shadow: 0 0 10px var(--error-glow);
+}
+
+/* ===== CONTENT GRID ===== */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+/* ===== VIDEO PLAYER ===== */
+.video-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+
+.video-placeholder {
+  aspect-ratio: 16 / 9;
+  background: var(--bg-deep);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.video-placeholder-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.video-placeholder-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.video-player {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  background: #000;
+}
+
+.video-info {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.video-info-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* ===== SUBTITLE EDITOR ===== */
+.subtitle-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  max-height: 500px;
+}
+
+.subtitle-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.subtitle-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.subtitle-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--bg-deep);
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  margin-left: 0.75rem;
+}
+
+.save-btn {
+  padding: 0.45rem 1rem;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 8px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.save-btn:hover {
+  background: rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.subtitle-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.subtitle-list::-webkit-scrollbar { width: 4px; }
+.subtitle-list::-webkit-scrollbar-track { background: transparent; }
+.subtitle-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.subtitle-item {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  margin-bottom: 0.5rem;
+  transition: all 0.2s;
+  background: var(--bg-deep);
+}
+
+.subtitle-item:hover {
+  border-color: var(--border);
+}
+
+.subtitle-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle-index {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.1);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+}
+
+.subtitle-time {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: 0.02em;
+}
+
+.subtitle-source {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 0.4rem;
+}
+
+.subtitle-textarea {
+  width: 100%;
+  background: rgba(56, 189, 248, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  rows: 2;
+}
+
+.subtitle-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.subtitle-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 0.75rem;
+  color: var(--text-muted);
+}
+
+.subtitle-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.subtitle-empty-text {
+  font-size: 0.85rem;
+}
+
+/* ===== DOWNLOAD SECTION ===== */
+.download-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.download-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.download-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--success);
+}
+
+.download-text h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.download-text p {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.download-btn {
+  padding: 0.65rem 1.75rem;
+  background: linear-gradient(135deg, var(--success), #6ee7b7);
+  color: var(--bg-deep);
+  border: none;
+  border-radius: 10px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.25s;
+  box-shadow: 0 4px 15px var(--success-glow);
+}
+
+.download-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 25px var(--success-glow);
+}
+
+/* ===== EMPTY STATE ===== */
+.empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.empty-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1.5rem;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(129, 140, 248, 0.1));
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.empty-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.empty-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 400px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .main { padding: 1rem; }
+  .input-row { flex-direction: column; }
+  .lang-row { flex-direction: column; }
+  .swap-btn { align-self: center; transform: rotate(90deg); }
+  .content-grid { grid-template-columns: 1fr; }
+  .pipeline-step .step-label { display: none; }
+  .download-section { flex-direction: column; gap: 1rem; text-align: center; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">B</div>
+      <div>
+        <div class="logo-text">BiliSub</div>
+        <div class="logo-tag">Video Translator</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-dot"></div>
+      <span class="status-label">服务就绪</span>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- INPUT SECTION -->
+    <section class="input-section">
+      <div class="input-row">
+        <div class="input-group">
+          <label class="input-label">视频链接 / BV号</label>
+          <input class="input-field" type="text" placeholder="粘贴 bilibili.com/video/BV... 或直接输入 BV号" />
+        </div>
+        <button class="submit-btn">开始处理</button>
+      </div>
+      <div class="lang-row">
+        <div class="lang-group">
+          <label class="input-label">源语言</label>
+          <select class="select-field">
+            <option value="zh" selected>中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+          </select>
+        </div>
+        <button class="swap-btn" title="交换语言">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+            <polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+          </svg>
+        </button>
+        <div class="lang-group">
+          <label class="input-label">目标语言</label>
+          <select class="select-field">
+            <option value="zh">中文</option>
+            <option value="en" selected>English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- PIPELINE PROGRESS (Active State) -->
+    <section class="pipeline-section">
+      <div class="pipeline-header">
+        <span class="pipeline-title">处理进度</span>
+        <span class="pipeline-message">正在翻译字幕...</span>
+      </div>
+      <div class="pipeline-steps">
+        <div class="pipeline-step done">
+          <div class="step-dot">✓</div>
+          <span class="step-label">下载</span>
+        </div>
+        <div class="pipeline-step done">
+          <div class="step-dot">✓</div>
+          <span class="step-label">提取音频</span>
+        </div>
+        <div class="pipeline-step done">
+          <div class="step-dot">✓</div>
+          <span class="step-label">语音识别</span>
+        </div>
+        <div class="pipeline-step active">
+          <div class="step-dot">4</div>
+          <span class="step-label">翻译字幕</span>
+        </div>
+        <div class="pipeline-step">
+          <div class="step-dot">5</div>
+          <span class="step-label">生成字幕</span>
+        </div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" style="width: 65%"></div>
+      </div>
+    </section>
+
+    <!-- CONTENT GRID -->
+    <div class="content-grid">
+
+      <!-- VIDEO PLAYER -->
+      <section class="video-section">
+        <div class="video-placeholder">
+          <div class="video-placeholder-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </div>
+          <span class="video-placeholder-text">等待视频加载</span>
+        </div>
+        <div class="video-info">
+          <span class="video-info-title">视频预览</span>
+        </div>
+      </section>
+
+      <!-- SUBTITLE EDITOR -->
+      <section class="subtitle-section">
+        <div class="subtitle-header">
+          <div style="display:flex;align-items:center;">
+            <span class="subtitle-title">字幕编辑</span>
+            <span class="subtitle-count">12 条</span>
+          </div>
+          <button class="save-btn">保存修改</button>
+        </div>
+        <div class="subtitle-list">
+          <!-- Sample subtitle items -->
+          <div class="subtitle-item">
+            <div class="subtitle-item-header">
+              <span class="subtitle-index">#1</span>
+              <span class="subtitle-time">00:00:01,200 → 00:00:03,500</span>
+            </div>
+            <div class="subtitle-source">大家好，欢迎来到我的频道</div>
+            <textarea class="subtitle-textarea" rows="2">Hello everyone, welcome to my channel</textarea>
+          </div>
+          <div class="subtitle-item">
+            <div class="subtitle-item-header">
+              <span class="subtitle-index">#2</span>
+              <span class="subtitle-time">00:00:04,100 → 00:00:06,800</span>
+            </div>
+            <div class="subtitle-source">今天我们来聊一聊人工智能</div>
+            <textarea class="subtitle-textarea" rows="2">Today let's talk about artificial intelligence</textarea>
+          </div>
+          <div class="subtitle-item">
+            <div class="subtitle-item-header">
+              <span class="subtitle-index">#3</span>
+              <span class="subtitle-time">00:00:07,200 → 00:00:10,500</span>
+            </div>
+            <div class="subtitle-source">人工智能正在改变我们的生活方式</div>
+            <textarea class="subtitle-textarea" rows="2">AI is changing the way we live</textarea>
+          </div>
+          <div class="subtitle-item">
+            <div class="subtitle-item-header">
+              <span class="subtitle-index">#4</span>
+              <span class="subtitle-time">00:00:11,000 → 00:00:14,300</span>
+            </div>
+            <div class="subtitle-source">从语音识别到自动驾驶，无处不在</div>
+            <textarea class="subtitle-textarea" rows="2">From speech recognition to autonomous driving, it's everywhere</textarea>
+          </div>
+          <div class="subtitle-item">
+            <div class="subtitle-item-header">
+              <span class="subtitle-index">#5</span>
+              <span class="subtitle-time">00:00:15,100 → 00:00:18,600</span>
+            </div>
+            <div class="subtitle-source">让我们一起探索这个令人兴奋的领域</div>
+            <textarea class="subtitle-textarea" rows="2">Let's explore this exciting field together</textarea>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- DOWNLOAD SECTION -->
+    <section class="download-section">
+      <div class="download-info">
+        <div class="download-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+        </div>
+        <div class="download-text">
+          <h4>字幕文件已就绪</h4>
+          <p>SRT 格式 · 双语字幕 · 12 条</p>
+        </div>
+      </div>
+      <button class="download-btn">下载 SRT 字幕</button>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>
