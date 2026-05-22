@@ -4,9 +4,12 @@ import com.bili.translator.config.AppProperties;
 import com.bili.translator.model.*;
 import com.bili.translator.service.*;
 import com.bili.translator.websocket.ProgressWebSocketHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -17,6 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class PipelineProcessor {
+
+    private static final Logger log = LoggerFactory.getLogger(PipelineProcessor.class);
 
     private final ConcurrentHashMap<String, TaskStatus> tasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, TaskResult> results = new ConcurrentHashMap<>();
@@ -118,6 +123,15 @@ public class PipelineProcessor {
                     (p, m) -> notifyProgress(taskId, "recognizing", 0.30f + p * 0.35f, m));
             notifyProgress(taskId, "recognizing", 0.65f, "语音识别完成");
 
+            Path recognizedTextPath = taskDir.resolve("recognized.txt");
+            try (BufferedWriter writer = Files.newBufferedWriter(recognizedTextPath)) {
+                for (SpeechRecognitionService.RecognizedItem item : recognized) {
+                    writer.write(item.getText());
+                    writer.newLine();
+                }
+            }
+            log.info("语音识别文本已输出到: {}", recognizedTextPath);
+
             notifyProgress(taskId, "translating", 0.65f, "开始翻译字幕");
             List<TranslatorService.TranslatedItem> translated =
                 translatorService.translate(recognized, request.getSourceLanguage(), request.getTargetLanguage(),
@@ -143,6 +157,7 @@ public class PipelineProcessor {
             TaskResult result = new TaskResult();
             result.setVideoPath(videoPath.toString());
             result.setSrtPath(srtPath.toString());
+            result.setRecognizedTextPath(recognizedTextPath.toString());
             result.setSubtitles(subtitleEntries);
             result.setDuration(duration);
             results.put(taskId, result);
