@@ -5,6 +5,7 @@ import com.bili.translator.pipeline.PipelineProcessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -27,7 +28,7 @@ public class ProgressWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final PipelineProcessor pipelineProcessor;
 
-    public ProgressWebSocketHandler(PipelineProcessor pipelineProcessor) {
+    public ProgressWebSocketHandler(@Lazy PipelineProcessor pipelineProcessor) {
         this.pipelineProcessor = pipelineProcessor;
     }
 
