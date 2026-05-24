@@ -24,6 +24,10 @@ export function getRecognizedTxtUrl(taskId: string): string {
   return `${API_BASE_URL}/api/subtitle/${taskId}/txt`;
 }
 
+export function getBurnedVideoUrl(taskId: string): string {
+  return `${API_BASE_URL}/api/video/${taskId}/burned`;
+}
+
 export async function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): Promise<void> {
   await fetch(`${API_BASE_URL}/api/subtitle/${taskId}`, {
     method: 'PUT',
