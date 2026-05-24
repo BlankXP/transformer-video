@@ -24,6 +24,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class TranslatorService {
@@ -127,11 +129,11 @@ public class TranslatorService {
                                          String sourceLanguage, String targetLanguage) throws Exception {
         StringBuilder numberedText = new StringBuilder();
         for (int i = 0; i < batch.size(); i++) {
-            numberedText.append(i + 1).append(". ").append(batch.get(i).getText()).append("\n");
+            numberedText.append("[").append(i + 1).append("] ").append(batch.get(i).getText()).append("\n");
         }
 
         String prompt = String.format(
-            "请将以下字幕文本从%s翻译为%s，保持原文的语义和语气。每行一个字幕，保持编号格式（编号. 翻译内容），不要添加额外解释：\n\n%s",
+            "请将以下字幕文本从%s翻译为%s，保持原文的语义和语气。每行一个字幕，保持编号格式（[编号] 翻译内容），严格一一对应，不要添加额外解释：\n\n%s",
             sourceLanguage, targetLanguage, numberedText.toString()
         );
 
@@ -276,15 +278,17 @@ public class TranslatorService {
     /**
      * 解析模型返回的编号格式翻译结果
      */
+    private static final Pattern NUMBERED_LINE = Pattern.compile("^\\[\\d+\\]\\s+(.*)$");
+
     private List<String> parseTranslated(String text, int expectedCount) {
         List<String> results = new ArrayList<>();
         String[] lines = text.trim().split("\n");
         for (String line : lines) {
             line = line.trim();
             if (line.isEmpty()) continue;
-            int dotIndex = line.indexOf(". ");
-            if (dotIndex > 0) {
-                results.add(line.substring(dotIndex + 2));
+            Matcher matcher = NUMBERED_LINE.matcher(line);
+            if (matcher.matches()) {
+                results.add(matcher.group(1).trim());
             } else {
                 results.add(line);
             }
