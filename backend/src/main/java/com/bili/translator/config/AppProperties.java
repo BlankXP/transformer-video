@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 public class AppProperties {
 
     private String dashscopeApiKey;
+    private String openrouterApiKey;
+    private String openrouterModel = "openai/gpt-oss-120b:free";
     private String tempDir = "./temp";
     private int maxVideoDuration = 3600;
     private int audioSegmentDuration = 300;
@@ -20,6 +22,22 @@ public class AppProperties {
 
     public void setDashscopeApiKey(String dashscopeApiKey) {
         this.dashscopeApiKey = dashscopeApiKey;
+    }
+
+    public String getOpenrouterApiKey() {
+        return openrouterApiKey;
+    }
+
+    public void setOpenrouterApiKey(String openrouterApiKey) {
+        this.openrouterApiKey = openrouterApiKey;
+    }
+
+    public String getOpenrouterModel() {
+        return openrouterModel;
+    }
+
+    public void setOpenrouterModel(String openrouterModel) {
+        this.openrouterModel = openrouterModel;
     }
 
     public String getTempDir() {
