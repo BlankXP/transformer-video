@@ -64,7 +64,7 @@ function App() {
           <VideoPlayer videoUrl={videoUrl} />
         </div>
         <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading} />
-        <DownloadPanel taskId={taskId} subtitles={subtitles} />
+        <DownloadPanel taskId={taskId} subtitles={subtitles} result={status?.result} />
       </main>
     </div>
   );

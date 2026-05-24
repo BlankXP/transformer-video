@@ -4,6 +4,7 @@ export type TaskStage =
   | "recognizing"
   | "translating"
   | "generating_subtitle"
+  | "burning_subtitle"
   | "completed"
   | "failed";
 
@@ -26,6 +27,7 @@ export interface SubtitleEntry {
 export interface TaskResult {
   video_path: string;
   srt_path: string;
+  burned_video_path?: string;
   subtitles: SubtitleEntry[];
   duration: number;
 }

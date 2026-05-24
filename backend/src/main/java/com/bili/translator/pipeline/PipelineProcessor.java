@@ -34,6 +34,7 @@ public class PipelineProcessor {
     private final SpeechRecognitionService speechRecognitionService;
     private final TranslatorService translatorService;
     private final SubtitleGenerator subtitleGenerator;
+    private final SubtitleBurner subtitleBurner;
     private final ProgressWebSocketHandler webSocketHandler;
 
     public PipelineProcessor(AppProperties appProperties, FileManager fileManager,
@@ -41,6 +42,7 @@ public class PipelineProcessor {
                               SpeechRecognitionService speechRecognitionService,
                               TranslatorService translatorService,
                               SubtitleGenerator subtitleGenerator,
+                              SubtitleBurner subtitleBurner,
                               ProgressWebSocketHandler webSocketHandler) {
         this.appProperties = appProperties;
         this.fileManager = fileManager;
@@ -49,6 +51,7 @@ public class PipelineProcessor {
         this.speechRecognitionService = speechRecognitionService;
         this.translatorService = translatorService;
         this.subtitleGenerator = subtitleGenerator;
+        this.subtitleBurner = subtitleBurner;
         this.webSocketHandler = webSocketHandler;
     }
 
@@ -151,13 +154,27 @@ public class PipelineProcessor {
                 subtitleEntries.add(entry);
             }
             subtitleGenerator.generateSrt(subtitleEntries, srtPath, true);
-            notifyProgress(taskId, "generating_subtitle", 1.0f, "字幕文件生成完成");
+            notifyProgress(taskId, "generating_subtitle", 0.92f, "字幕文件生成完成");
+
+            Path burnedVideoPath = taskDir.resolve("video_burned.mp4");
+            notifyProgress(taskId, "burning_subtitle", 0.92f, "开始烧录字幕到视频");
+            try {
+                subtitleBurner.burn(videoPath, srtPath, burnedVideoPath);
+                notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录完成");
+            } catch (Exception e) {
+                log.warn("字幕烧录失败，跳过烧录步骤: {}", e.getMessage());
+                burnedVideoPath = null;
+                notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录失败已跳过");
+            }
 
             double duration = audioExtractor.getDuration(audioPath);
             TaskResult result = new TaskResult();
             result.setVideoPath(videoPath.toString());
             result.setSrtPath(srtPath.toString());
             result.setRecognizedTextPath(recognizedTextPath.toString());
+            if (burnedVideoPath != null) {
+                result.setBurnedVideoPath(burnedVideoPath.toString());
+            }
             result.setSubtitles(subtitleEntries);
             result.setDuration(duration);
             results.put(taskId, result);
