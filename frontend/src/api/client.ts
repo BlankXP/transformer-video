@@ -3,7 +3,7 @@ import type { ProcessRequest, TaskStatus, SubtitleEntry } from '../types';
 const API_BASE_URL = 'http://localhost:8000';
 
 export async function submitTask(request: ProcessRequest): Promise<{ task_id: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/tasks`, {
+  const response = await fetch(`${API_BASE_URL}/api/video/process`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -12,18 +12,22 @@ export async function submitTask(request: ProcessRequest): Promise<{ task_id: st
 }
 
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}`);
+  const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/status`);
   return response.json();
 }
 
 export function getSubtitleSrtUrl(taskId: string): string {
-  return `${API_BASE_URL}/api/tasks/${taskId}/subtitle`;
+  return `${API_BASE_URL}/api/subtitle/${taskId}/srt`;
+}
+
+export function getRecognizedTxtUrl(taskId: string): string {
+  return `${API_BASE_URL}/api/subtitle/${taskId}/txt`;
 }
 
 export async function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): Promise<void> {
-  await fetch(`${API_BASE_URL}/api/tasks/${taskId}/subtitle`, {
+  await fetch(`${API_BASE_URL}/api/subtitle/${taskId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subtitles }),
+    body: JSON.stringify(subtitles),
   });
 }
