@@ -6,6 +6,15 @@ import com.alibaba.dashscope.aigc.generation.GenerationResult;
 import com.alibaba.dashscope.common.Message;
 import com.alibaba.dashscope.common.Role;
 import com.bili.translator.config.AppProperties;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -13,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 @Service
@@ -22,9 +32,17 @@ public class TranslatorService {
 
     private final AppProperties appProperties;
     private static final int BATCH_SIZE = 50;
+    private final OkHttpClient httpClient;
+    private final ObjectMapper objectMapper;
 
     public TranslatorService(AppProperties appProperties) {
         this.appProperties = appProperties;
+        this.httpClient = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
+        this.objectMapper = new ObjectMapper();
     }
 
     /**
@@ -141,9 +159,15 @@ public class TranslatorService {
         int subSize = Math.max(1, batch.size() / 2);
 
         if (subSize >= batch.size()) {
-            log.warn("第{}批已无法继续拆分(每批仅{}条)，该批翻译结果置空", batchNum, batch.size());
-            for (int i = 0; i < batch.size(); i++) {
-                allTranslated.add("");
+            log.warn("第{}批已无法继续拆分(每批仅{}条)，尝试OpenRouter回退翻译", batchNum, batch.size());
+            for (SpeechRecognitionService.RecognizedItem item : batch) {
+                try {
+                    String translated = translateSingleViaOpenRouter(item.getText(), sourceLanguage, targetLanguage);
+                    allTranslated.add(translated);
+                } catch (Exception e) {
+                    log.warn("OpenRouter回退翻译也失败，该条翻译结果置空: {}", e.getMessage());
+                    allTranslated.add("");
+                }
             }
             return allTranslated;
         }
@@ -165,6 +189,64 @@ public class TranslatorService {
         }
 
         return allTranslated;
+    }
+
+    /**
+     * 通过OpenRouter API翻译单条文本（作为DashScope翻译失败的回退方案）
+     */
+    private String translateSingleViaOpenRouter(String text, String sourceLanguage, String targetLanguage) throws Exception {
+        String apiKey = appProperties.getOpenrouterApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new RuntimeException("OpenRouter API Key未配置");
+        }
+
+        String prompt = String.format(
+            "请将以下文本从%s翻译为%s，只输出翻译结果，不要添加任何解释：\n\n%s",
+            sourceLanguage, targetLanguage, text
+        );
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("model", appProperties.getOpenrouterModel());
+
+        ArrayNode messages = requestBody.putArray("messages");
+        ObjectNode userMsg = messages.addObject();
+        userMsg.put("role", "user");
+        userMsg.put("content", prompt);
+
+        ObjectNode reasoning = objectMapper.createObjectNode();
+        reasoning.put("enabled", true);
+        requestBody.set("reasoning", reasoning);
+
+        String jsonBody = objectMapper.writeValueAsString(requestBody);
+        log.debug("OpenRouter请求体: {}", jsonBody);
+
+        Request request = new Request.Builder()
+            .url("https://openrouter.ai/api/v1/chat/completions")
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer " + apiKey)
+            .post(RequestBody.create(jsonBody, MediaType.parse("application/json")))
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            String responseBody = response.body() != null ? response.body().string() : "";
+            if (!response.isSuccessful()) {
+                throw new RuntimeException("OpenRouter API返回错误: HTTP " + response.code() + " - " + responseBody);
+            }
+
+            JsonNode root = objectMapper.readTree(responseBody);
+            JsonNode choices = root.path("choices");
+            if (choices.isEmpty()) {
+                throw new RuntimeException("OpenRouter API返回空choices");
+            }
+
+            String content = choices.get(0).path("message").path("content").asText("");
+            if (content.isBlank()) {
+                throw new RuntimeException("OpenRouter API返回空内容");
+            }
+
+            log.info("OpenRouter回退翻译成功: 原文长度={}, 译文长度={}", text.length(), content.length());
+            return content.trim();
+        }
     }
 
     /**
