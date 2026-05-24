@@ -14,7 +14,12 @@ public class SubtitleGenerator {
 
     public void generateSrt(List<SubtitleEntry> subtitles, Path outputPath, boolean bilingual) throws Exception {
         String srtContent = formatSrt(subtitles, bilingual);
-        Files.writeString(outputPath, srtContent, StandardCharsets.UTF_8);
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        byte[] contentBytes = srtContent.getBytes(StandardCharsets.UTF_8);
+        byte[] withBom = new byte[bom.length + contentBytes.length];
+        System.arraycopy(bom, 0, withBom, 0, bom.length);
+        System.arraycopy(contentBytes, 0, withBom, bom.length, contentBytes.length);
+        Files.write(outputPath, withBom);
     }
 
     private String formatSrt(List<SubtitleEntry> subtitles, boolean bilingual) {
