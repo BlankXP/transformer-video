@@ -1,6 +1,10 @@
 server:
   port: 8000
 
+spring:
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
 app:
   dashscope-api-key: ${DASHSCOPE_API_KEY:}
   openrouter-api-key: ${OPENROUTER_API_KEY:}
