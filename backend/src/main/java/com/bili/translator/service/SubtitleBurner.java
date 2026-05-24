@@ -14,12 +14,15 @@ public class SubtitleBurner {
     private static final Logger log = LoggerFactory.getLogger(SubtitleBurner.class);
 
     public void burn(Path videoPath, Path srtPath, Path outputPath) throws Exception {
-        String srtPathEscaped = srtPath.toString().replace("\\", "/").replace(":", "\\:");
+        String srtPathEscaped = escapePath(srtPath.toString());
+
+        String filter = "subtitles=" + srtPathEscaped
+            + ":force_style='FontName=Noto Sans CJK SC,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,MarginV=30'";
 
         ProcessBuilder pb = new ProcessBuilder(
             "ffmpeg", "-y",
             "-i", videoPath.toString(),
-            "-vf", "subtitles='" + srtPathEscaped + "'",
+            "-vf", filter,
             "-c:a", "copy",
             outputPath.toString()
         );
@@ -42,5 +45,14 @@ public class SubtitleBurner {
         }
 
         log.info("字幕烧录完成: {}", outputPath);
+    }
+
+    private String escapePath(String path) {
+        String escaped = path.replace("\\", "/");
+        escaped = escaped.replace(":", "\\:");
+        escaped = escaped.replace("'", "\\'");
+        escaped = escaped.replace("[", "\\[");
+        escaped = escaped.replace("]", "\\]");
+        return escaped;
     }
 }
