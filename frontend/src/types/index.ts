@@ -36,4 +36,5 @@ export interface ProcessRequest {
   url: string;
   source_language: string;
   target_language: string;
+  translate_subtitles: boolean;
 }
