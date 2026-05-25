@@ -6,10 +6,8 @@ import VideoPlayer from "./components/VideoPlayer";
 import DownloadPanel from "./components/DownloadPanel";
 import useTask from "./hooks/useTask";
 import useWebSocket from "./hooks/useWebSocket";
-import { saveSubtitle } from "./api/client";
+import { saveSubtitle, API_BASE_URL } from "./api/client";
 import type { SubtitleEntry, ProcessRequest } from "./types";
-
-const API_BASE_URL = "http://localhost:8000";
 
 function App() {
   const { taskId, status, loading, startTask, refreshStatus } = useTask();
