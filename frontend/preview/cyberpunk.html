@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BILIBILI TRANSLATOR // 字幕引擎</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --cyan:#00f0ff;
+  --magenta:#ff00ff;
+  --yellow:#f0ff00;
+  --bg:#0a0a0f;
+  --card:rgba(15,15,25,0.85);
+  --border:rgba(0,240,255,0.2);
+  --glow-cyan:0 0 10px rgba(0,240,255,0.5),0 0 30px rgba(0,240,255,0.2);
+  --glow-magenta:0 0 10px rgba(255,0,255,0.5),0 0 30px rgba(255,0,255,0.2);
+  --glow-yellow:0 0 10px rgba(240,255,0,0.5),0 0 30px rgba(240,255,0,0.2);
+}
+html,body{height:100%}
+body{
+  font-family:'JetBrains Mono',monospace;
+  background:var(--bg);
+  color:#e0e0e8;
+  min-height:100vh;
+  overflow-x:hidden;
+  position:relative;
+}
+
+/* Scanline overlay */
+body::before{
+  content:'';position:fixed;top:0;left:0;width:100%;height:100%;
+  background:repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events:none;z-index:9999;
+}
+
+/* Grid background */
+body::after{
+  content:'';position:fixed;top:0;left:0;width:100%;height:100%;
+  background:
+    linear-gradient(90deg,rgba(0,240,255,0.03) 1px,transparent 1px),
+    linear-gradient(rgba(0,240,255,0.03) 1px,transparent 1px);
+  background-size:60px 60px;
+  pointer-events:none;z-index:0;
+}
+
+/* Circuit pattern decoration */
+.circuit-bg{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  pointer-events:none;z-index:0;opacity:0.06;
+  background-image:
+    radial-gradient(circle at 20% 30%,var(--cyan) 1px,transparent 1px),
+    radial-gradient(circle at 80% 70%,var(--magenta) 1px,transparent 1px),
+    radial-gradient(circle at 50% 10%,var(--yellow) 1px,transparent 1px),
+    radial-gradient(circle at 10% 80%,var(--cyan) 1px,transparent 1px),
+    radial-gradient(circle at 90% 20%,var(--magenta) 1px,transparent 1px);
+  background-size:200px 200px,180px 180px,220px 220px,160px 160px,250px 250px;
+}
+
+.container{max-width:1100px;margin:0 auto;padding:20px;position:relative;z-index:1}
+
+/* Glitch title */
+.glitch-wrapper{text-align:center;padding:40px 0 20px}
+.glitch{
+  font-family:'Orbitron',sans-serif;font-weight:900;font-size:clamp(1.6rem,4vw,3rem);
+  text-transform:uppercase;color:var(--cyan);position:relative;display:inline-block;
+  letter-spacing:3px;text-shadow:var(--glow-cyan);
+}
+.glitch::before,.glitch::after{
+  content:attr(data-text);position:absolute;top:0;left:0;width:100%;height:100%;
+}
+.glitch::before{
+  color:var(--magenta);z-index:-1;animation:glitch-1 2s infinite linear alternate-reverse;
+  clip-path:polygon(0 0,100% 0,100% 35%,0 35%);
+}
+.glitch::after{
+  color:var(--yellow);z-index:-2;animation:glitch-2 3s infinite linear alternate-reverse;
+  clip-path:polygon(0 65%,100% 65%,100% 100%,0 100%);
+}
+@keyframes glitch-1{
+  0%,80%,100%{transform:translate(0)}
+  82%{transform:translate(-3px,1px)}
+  84%{transform:translate(3px,-1px)}
+  86%{transform:translate(-2px,2px)}
+  88%{transform:translate(2px,-2px)}
+  90%{transform:translate(-1px,1px)}
+}
+@keyframes glitch-2{
+  0%,70%,100%{transform:translate(0)}
+  72%{transform:translate(3px,-1px)}
+  74%{transform:translate(-3px,1px)}
+  76%{transform:translate(2px,2px)}
+  78%{transform:translate(-2px,-2px)}
+  80%{transform:translate(1px,-1px)}
+}
+
+.subtitle-text{
+  font-size:0.75rem;color:rgba(0,240,255,0.6);letter-spacing:5px;margin-top:8px;
+  font-family:'JetBrains Mono',monospace;
+}
+
+/* Card base */
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:24px;
+  margin-bottom:20px;
+  position:relative;
+  backdrop-filter:blur(10px);
+}
+.card::before{
+  content:'';position:absolute;top:-1px;left:20px;right:20px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+}
+
+.section-label{
+  font-family:'Orbitron',sans-serif;font-size:0.7rem;color:var(--magenta);
+  letter-spacing:3px;margin-bottom:16px;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;
+}
+.section-label::before{
+  content:'//';color:var(--cyan);font-weight:900;
+}
+
+/* Form elements */
+.input-group{margin-bottom:14px}
+.input-group label{
+  display:block;font-size:0.72rem;color:rgba(224,224,232,0.6);
+  letter-spacing:1px;margin-bottom:6px;text-transform:uppercase;
+}
+input[type=text],select,textarea{
+  width:100%;background:rgba(0,0,0,0.5);
+  border:1px solid var(--border);
+  color:var(--cyan);padding:12px 14px;
+  font-family:'JetBrains Mono',monospace;font-size:0.88rem;
+  border-radius:3px;outline:none;transition:border-color .3s,box-shadow .3s;
+}
+input[type=text]:focus,select:focus,textarea:focus{
+  border-color:var(--cyan);box-shadow:var(--glow-cyan);
+}
+select option{background:#111;color:#e0e0e8}
+textarea{resize:vertical;min-height:60px}
+::placeholder{color:rgba(0,240,255,0.3)}
+
+.row{display:flex;gap:14px}.row>*{flex:1}
+
+/* Neon button */
+.neon-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;padding:14px 28px;
+  font-family:'Orbitron',sans-serif;font-size:0.85rem;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;
+  color:var(--cyan);background:transparent;
+  border:2px solid var(--cyan);border-radius:3px;
+  cursor:pointer;position:relative;overflow:hidden;
+  transition:all .3s ease;text-decoration:none;
+}
+.neon-btn:hover{
+  background:rgba(0,240,255,0.08);
+  box-shadow:var(--glow-cyan),inset 0 0 20px rgba(0,240,255,0.1);
+  transform:translateY(-1px);
+}
+.neon-btn::before{
+  content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(0,240,255,0.15),transparent);
+  transition:left .5s ease;
+}
+.neon-btn:hover::before{left:100%}
+
+/* Progress panel */
+.progress-stage{
+  display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+}
+.stage-num{
+  width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.68rem;font-weight:700;font-family:'Orbitron',sans-serif;
+  flex-shrink:0;transition:all .3s;
+}
+.stage-num.done{background:var(--cyan);color:#000;box-shadow:var(--glow-cyan)}
+.stage-num.active{
+  background:var(--magenta);color:#fff;
+  animation:pulse-neon 1.2s infinite;
+  box-shadow:var(--glow-magenta)
+}
+.stage-num.pending{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.3);border:1px solid rgba(255,255,255,0.1)}
+@keyframes pulse-neon{
+  0%,100%{box-shadow:0 0 5px var(--magenta)}
+  50%{box-shadow:0 0 20px var(--magenta),0 0 40px rgba(255,0,255,0.3)}
+}
+.stage-info{flex:1}
+.stage-name{font-size:0.78rem;color:rgba(224,224,232,0.9)}
+.stage-status{font-size:0.65rem;margin-top:2px}
+.status-done{color:var(--cyan)}
+.status-active{color:var(--magenta);animation:blink 1s infinite}
+.status-pending{color:rgba(255,255,255,0.25)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+.progress-bar-wrap{
+  height:6px;background:rgba(255,255,255,0.05);border-radius:3px;
+  overflow:hidden;margin-top:18px;position:relative;
+}
+.progress-bar-fill{
+  height:100%;width:67%;border-radius:3px;
+  background:linear-gradient(90deg,var(--cyan),var(--magenta));
+  position:relative;animation:progress-glow 2s infinite alternate;
+}
+.progress-bar-fill::after{
+  content:'';position:absolute;top:0;right:0;width:30px;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.6));
+  animation:shimmer 1.5s infinite;
+}
+@keyframes progress-glow{
+  from{box-shadow:0 0 8px var(--cyan)}
+  to{box-shadow:0 0 16px var(--magenta)}
+}
+@keyframes shimmer{from{transform:translateX(-30px)}to{transform:translateX(30px)}}
+.pct-label{
+  text-align:right;font-size:0.7rem;color:var(--cyan);
+  margin-top:6px;font-family:'Orbitron',sans-serif;letter-spacing:1px;
+}
+
+/* Video player CRT area */
+.crt-container{
+  position:relative;background:#000;border-radius:4px;
+  overflow:hidden;border:1px solid var(--border);
+  aspect-ratio:16/9;max-height:380px;
+}
+.crt-screen{
+  width:100%;height:100%;
+  background:linear-gradient(135deg,#0d0d15 0%,#12121c 50%,#0a0a12 100%);
+  display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:12px;
+  position:relative;
+}
+.crt-screen::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,0.6) 100%);
+  pointer-events:none;z-index:2;
+}
+/* CRT flicker */
+.crt-flicker{
+  animation:crt-flicker 0.15s infinite;
+  position:absolute;inset:0;background:rgba(255,255,255,0.01);
+  pointer-events:none;z-index:3;
+}
+@keyframes crt-flicker{
+  0%{opacity:0.27}5%{opacity:0.32}10%{opacity:0.23}15%{opacity:0.31}
+  20%{opacity:0.28}25%{opacity:0.34}30%{opacity:0.22}35%{opacity:0.29}
+  40%{opacity:0.33}45%{opacity:0.25}50%{opacity:0.36}55%{opacity:0.21}
+  60%{opacity:0.3}65%{opacity:0.27}70%{opacity:0.35}75%{opacity:0.24}
+  80%{opacity:0.31}85%{opacity:0.26}90%{opacity:0.34}95%{opacity:0.23}
+  100%{opacity:0.28}
+}
+.play-icon{
+  width:64px;height:64px;border-radius:50%;
+  border:2px solid var(--cyan);display:flex;align-items:center;
+  justify-content:center;position:relative;z-index:1;
+  box-shadow:var(--glow-cyan);
+}
+.play-icon::after{
+  content:'';border-style:solid;border-width:10px 0 10px 18px;
+  border-color:transparent transparent transparent var(--cyan);
+  margin-left:4px;
+}
+.crt-text{font-size:0.72rem;color:rgba(0,240,255,0.4);letter-spacing:3px;z-index:1}
+.crt-scanlines{
+  position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 1px,rgba(0,0,0,0.15) 1px,rgba(0,0,0,0.15) 2px);
+  pointer-events:none;z-index:2;
+}
+
+/* Subtitle editor */
+.sub-entry{
+  background:rgba(0,0,0,0.35);
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:4px;padding:14px;margin-bottom:12px;
+  transition:border-color .3s;
+}
+.sub-entry:hover{border-color:rgba(0,240,255,0.2)}
+.sub-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:8px;
+}
+.sub-id{
+  font-family:'Orbitron',sans-serif;font-size:0.7rem;
+  color:var(--yellow);font-weight:700;
+}
+.sub-time{font-size:0.68rem;color:rgba(255,255,255,0.35)}
+.sub-source{
+  font-size:0.82rem;color:rgba(224,224,232,0.7);
+  margin-bottom:8px;line-height:1.5;
+}
+.sub-trans textarea{
+  background:rgba(0,240,255,0.03);
+  border-color:rgba(0,240,255,0.15);
+  color:var(--cyan);font-size:0.8rem;padding:10px 12px;
+  min-height:48px;
+}
+.sub-trans textarea:focus{
+  border-color:var(--cyan);box-shadow:var(--glow-cyan);
+}
+
+/* Download buttons */
+.download-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.dl-btn{
+  padding:14px 12px;border-radius:4px;
+  font-family:'Orbitron',sans-serif;font-size:0.72rem;
+  font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  cursor:pointer;border:2px solid;transition:all .3s;
+  text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+.dl-btn span{font-size:0.6rem;font-weight:400;opacity:.7}
+.dl-srt{
+  color:#00ff88;border-color:#00ff88;background:rgba(0,255,136,0.05);
+}
+.dl-srt:hover{
+  background:rgba(0,255,136,0.12);
+  box-shadow:0 0 15px rgba(0,255,136,0.4);
+  transform:translateY(-2px);
+}
+.dl-txt{
+  color:#00aaff;border-color:#00aaff;background:rgba(0,170,255,0.05);
+}
+.dl-txt:hover{
+  background:rgba(0,170,255,0.12);
+  box-shadow:0 0 15px rgba(0,170,255,0.4);
+  transform:translateY(-2px);
+}
+.dl-video{
+  color:#bf5af2;border-color:#bf5af2;background:rgba(191,90,242,0.05);
+}
+.dl-video:hover{
+  background:rgba(191,90,242,0.12);
+  box-shadow:0 0 15px rgba(191,90,242,0.4);
+  transform:translateY(-2px);
+}
+
+/* Footer */
+.footer{
+  text-align:center;padding:20px;font-size:0.65rem;
+  color:rgba(255,255,255,0.15);letter-spacing:2px;
+  border-top:1px solid rgba(255,255,255,0.04);margin-top:10px;
+}
+
+/* Responsive */
+@media(max-width:640px){
+  .row{flex-direction:column}
+  .download-grid{grid-template-columns:1fr}
+  .container{padding:12px}
+  .card{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<div class="circuit-bg"></div>
+
+<div class="container">
+
+  <!-- Header -->
+  <header class="glitch-wrapper">
+    <h1 class="glitch" data-text="BILIBILI TRANSLATOR // 字幕引擎">BILIBILI TRANSLATOR // 字幕引擎</h1>
+    <p class="subtitle-text">NEURAL SUBTITLE ENGINE v3.0.7 // CYBERNETIC TRANSLATION PROTOCOL</p>
+  </header>
+
+  <!-- URL Input -->
+  <section class="card">
+    <div class="section-label">视频输入源 // VIDEO SOURCE</div>
+    <div class="input-group">
+      <label>B站视频链接 / BV号</label>
+      <input type="text" placeholder="输入BV号或视频URL，例如：BV1xx411c7mD 或 https://www.bilibili.com/video/BV1xx411c7mD">
+    </div>
+    <div class="row">
+      <div class="input-group">
+        <label>源语言 // SOURCE</label>
+        <select>
+          <option>日语 (Japanese)</option>
+          <option selected>英语 (English)</option>
+          <option>韩语 (Korean)</option>
+          <option>俄语 (Russian)</option>
+          <option>法语 (French)</option>
+          <option>德语 (German)</option>
+          <option>西班牙语 (Spanish)</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label>目标语言 // TARGET</label>
+        <select>
+          <option selected>简体中文 (Simplified Chinese)</option>
+          <option>繁體中文 (Traditional Chinese)</option>
+          <option>英语 (English)</option>
+          <option>日语 (Japanese)</option>
+          <option>韩语 (Korean)</option>
+        </select>
+      </div>
+    </div>
+    <button class="neon-btn">
+      <span>▶</span> INITIALIZE TRANSLATION
+    </button>
+  </section>
+
+  <!-- Progress Panel -->
+  <section class="card">
+    <div class="section-label">翻译流水线 // PIPELINE STATUS</div>
+
+    <div class="progress-stage">
+      <div class="stage-num done">01</div>
+      <div class="stage-info">
+        <div class="stage-name">下载视频资源</div>
+        <div class="stage-status status-done">✓ 已完成 — 耗时 3.2s</div>
+      </div>
+    </div>
+    <div class="progress-stage">
+      <div class="stage-num done">02</div>
+      <div class="stage-info">
+        <div class="stage-name">提取音频轨道</div>
+        <div class="stage-status status-done">✓ 已完成 — 耗时 1.8s</div>
+      </div>
+    </div>
+    <div class="progress-stage">
+      <div class="stage-num done">03</div>
+      <div class="stage-info">
+        <div class="stage-name">语音识别 (Whisper-Large-v3)</div>
+        <div class="stage-status status-done">✓ 已完成 — 检测到 47 条语句，置信度 96.3%</div>
+      </div>
+    </div>
+    <div class="progress-stage">
+      <div class="stage-num active">04</div>
+      <div class="stage-info">
+        <div class="stage-name">神经机器翻译 (GPT-4o → 中文)</div>
+        <div class="stage-status status-active">◉ 处理中... 32/47 条已翻译</div>
+      </div>
+    </div>
+    <div class="progress-stage">
+      <div class="stage-num pending">05</div>
+      <div class="stage-info">
+        <div class="stage-name">生成 SRT / ASS 字幕文件</div>
+        <div class="stage-status status-pending">○ 等待中</div>
+      </div>
+    </div>
+    <div class="progress-stage" style="border-bottom:none">
+      <div class="stage-num pending">06</div>
+      <div class="stage-info">
+        <div class="stage-name">烧录字幕至视频 (FFmpeg)</div>
+        <div class="stage-status status-pending">○ 等待中</div>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill"></div>
+    </div>
+    <div class="pct-label">67% COMPLETE // EST. REMAINING: ~42s</div>
+  </section>
+
+  <!-- Video Player -->
+  <section class="card">
+    <div class="section-label">预览窗口 // PREVIEW TERMINAL</div>
+    <div class="crt-container">
+      <div class="crt-screen">
+        <div class="play-icon"></div>
+        <div class="crt-text">[ VIDEO STREAM READY ]</div>
+        <div class="crt-text" style="font-size:0.6rem">RESOLUTION: 1920×1080 | FPS: 30 | DURATION: 12:34</div>
+        <div class="crt-scanlines"></div>
+        <div class="crt-flicker"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Subtitle Editor -->
+  <section class="card">
+    <div class="section-label">字幕编辑器 // SUBTITLE EDITOR</div>
+
+    <div class="sub-entry">
+      <div class="sub-header">
+        <span class="sub-id">#001</span>
+        <span class="sub-time">00:00:02.300 → 00:00:05.800</span>
+      </div>
+      <div class="sub-source">「おはようございます、今日も素晴らしい天気ですね」</div>
+      <div class="sub-trans">
+        <textarea placeholder="编辑翻译...">早上好，今天天气真不错呢。</textarea>
+      </div>
+    </div>
+
+    <div class="sub-entry">
+      <div class="sub-header">
+        <span class="sub-id">#002</span>
+        <span class="sub-time">00:00:07.100 → 00:00:11.500</span>
+      </div>
+      <div class="sub-source">このプロジェクトの核心技術について詳しく説明させていただきます。まず、ニューラルネットワークのアーキテクチャから始めましょう。</div>
+      <div class="sub-trans">
+        <textarea placeholder="编辑翻译...">让我详细介绍一下这个项目的核心技术。首先，我们从神经网络架构开始讲起。</textarea>
+      </div>
+    </div>
+
+    <div class="sub-entry">
+      <div class="sub-header">
+        <span class="sub-id">#003</span>
+        <span class="sub-time">00:00:13.200 → 00:00:17.600</span>
+      </div>
+      <div class="sub-source">実験結果によると、従来の手法に比べて精度が23%向上し、処理速度も約1.8倍に改善されました。</div>
+      <div class="sub-trans">
+        <textarea placeholder="编辑翻译...">实验结果表明，与传统方法相比精度提升了约23%，处理速度也改善了大约1.8倍。</textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Panel -->
+  <section class="card">
+    <div class="section-label">导出面板 // EXPORT TERMINAL</div>
+    <div class="download-grid">
+      <button class="dl-btn dl-srt">
+        SRT 字幕
+        <span>.srt 格式 · 含时间轴</span>
+      </button>
+      <button class="dl-btn dl-txt">
+        TXT 文本
+        <span>.txt 格式 · 纯文本</span>
+      </button>
+      <button class="dl-btn dl-video">
+        烧录视频
+        <span>.mp4 · 内嵌字幕</span>
+      </button>
+    </div>
+  </section>
+
+  <footer class="footer">
+    BILIBILI TRANSLATOR ENGINE // ©2026 CYBERNETIC SYSTEMS // ALL RIGHTS RESERVED
+  </footer>
+
+</div>
+
+</body>
+</html>
