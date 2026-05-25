@@ -5,6 +5,7 @@ public class ProcessRequest {
     private String url;
     private String sourceLanguage;
     private String targetLanguage;
+    private boolean translateSubtitles = true;
 
     public String getUrl() {
         return url;
@@ -28,5 +29,13 @@ public class ProcessRequest {
 
     public void setTargetLanguage(String targetLanguage) {
         this.targetLanguage = targetLanguage;
+    }
+
+    public boolean isTranslateSubtitles() {
+        return translateSubtitles;
+    }
+
+    public void setTranslateSubtitles(boolean translateSubtitles) {
+        this.translateSubtitles = translateSubtitles;
     }
 }
