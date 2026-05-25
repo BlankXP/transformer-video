@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SYS.TRANSLATOR v2.0 | B站视频翻译字幕生成器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Mono&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg-primary:#0a0a0a;
+  --bg-secondary:#111111;
+  --bg-tertiary:#1a1a1a;
+  --bg-cell:#141414;
+  --border-color:#2a2a2a;
+  --border-bright:#3a3a3a;
+  --text-primary:#e8e8e8;
+  --text-secondary:#888;
+  --text-muted:#555;
+  --accent-orange:#ff6b00;
+  --accent-yellow:#e6ff00;
+  --accent-green:#00ff41;
+  --accent-red:#ff2244;
+  --led-green:#00ff41;
+  --led-red:#ff2244;
+  --led-orange:#ff6b00;
+  --led-dim:#333;
+}
+
+html{font-size:14px}
+
+body{
+  font-family:'JetBrains Mono',monospace;
+  background-color:var(--bg-primary);
+  color:var(--text-primary);
+  min-height:100vh;
+  line-height:1.5;
+  position:relative;
+  overflow-x:hidden;
+}
+
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity:0.04;
+  pointer-events:none;
+  z-index:9999;
+}
+
+.container{
+  max-width:1100px;
+  margin:0 auto;
+  padding:20px 16px 60px;
+}
+
+/* ===== HEADER ===== */
+.header{
+  border:1px solid var(--border-bright);
+  background:var(--bg-secondary);
+  padding:18px 24px;
+  margin-bottom:16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  position:relative;
+}
+
+.header::after{
+  content:'';
+  position:absolute;
+  bottom:-1px;left:0;right:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent-orange),transparent);
+  opacity:.6;
+}
+
+.header-left{display:flex;align-items:center;gap:12px}
+
+.header-title{
+  font-family:'Space Mono',monospace;
+  font-size:1rem;
+  font-weight:700;
+  letter-spacing:2px;
+  color:var(--text-primary);
+  white-space:nowrap;
+}
+
+.header-cursor{
+  display:inline-block;
+  width:8px;height:16px;
+  background:var(--accent-orange);
+  animation:blink .9s step-end infinite;
+  vertical-align:text-bottom;
+  margin-left:2px;
+}
+
+@keyframes blink{50%{opacity:0}}
+
+.header-version{
+  font-size:.65rem;
+  color:var(--text-muted);
+  letter-spacing:1px;
+  border-left:1px solid var(--border-color);
+  padding-left:12px;
+  margin-left:4px;
+}
+
+.status-leds{display:flex;align-items:center;gap:10px}
+
+.led-group{display:flex;align-items:center;gap:6px;font-size:.6rem;color:var(--text-secondary);letter-spacing:.5px;text-transform:uppercase}
+
+.led{
+  width:8px;height:8px;
+  border-radius:50%;
+  box-shadow:0 0 6px currentColor,0 0 12px currentColor;
+}
+.led.on-green{background:var(--led-green);color:var(--led-green)}
+.led.on-red{background:var(--led-red);color:var(--led-red)}
+.led.on-orange{background:var(--led-orange);color:var(--led-orange);animation:pulse-led 1.2s ease-in-out infinite}
+.led.dim{background:var(--led-dim);color:transparent;box-shadow:none}
+
+@keyframes pulse-led{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ===== GRID LAYOUT ===== */
+.grid-main{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.panel{
+  border:1px solid var(--border-color);
+  background:var(--bg-secondary);
+  position:relative;
+}
+
+.panel-header{
+  font-family:'Space Mono',monospace;
+  font-size:.62rem;
+  text-transform:uppercase;
+  letter-spacing:2px;
+  color:var(--text-muted);
+  padding:8px 14px;
+  border-bottom:1px solid var(--border-color);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  background:var(--bg-tertiary);
+}
+
+.panel-body{padding:14px}
+
+/* ===== INPUT FORM (CLI STYLE) ===== */
+.cli-form{display:flex;flex-direction:column;gap:10px}
+
+.cli-row{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+
+.cli-label{
+  font-size:.65rem;
+  color:var(--text-muted);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.cli-label::before{
+  content:'>';
+  color:var(--accent-orange);
+  font-weight:700;
+}
+
+.cli-label .colon{
+  color:var(--text-secondary)
+}
+
+.cli-input,.cli-textarea{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.82rem;
+  background:var(--bg-primary);
+  border:1px solid var(--border-color);
+  color:var(--text-primary);
+  padding:10px 12px;
+  outline:none;
+  transition:border-color .15s;
+}
+
+.cli-input:focus,.cli-textarea:focus{
+  border-color:var(--accent-orange);
+  box-shadow:inset 0 0 0 1px rgba(255,107,0,.08);
+}
+
+.cli-input::placeholder,.cli-textarea::placeholder{color:var(--text-muted)}
+
+.cli-textarea{resize:vertical;min-height:72px;line-height:1.6}
+
+/* ===== LANGUAGE SELECTOR ===== */
+.lang-selector-wrapper{display:flex;flex-direction:column;gap:3px}
+
+.lang-select{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.82rem;
+  appearance:none;
+  -webkit-appearance:none;
+  background:var(--bg-primary) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+  border:1px solid var(--border-color);
+  color:var(--text-primary);
+  padding:10px 32px 10px 12px;
+  cursor:pointer;
+  outline:none;
+  transition:border-color .15s;
+}
+
+.lang-select:focus{border-color:var(--accent-orange)}
+
+.lang-select option{background:var(--bg-secondary);color:var(--text-primary)}
+
+/* ===== EXECUTE BUTTON ===== */
+.execute-btn{
+  font-family:'Space Mono',monospace;
+  font-size:.9rem;
+  font-weight:700;
+  letter-spacing:3px;
+  text-transform:uppercase;
+  background:linear-gradient(180deg,#222 0%,#151515 100%);
+  border:2px solid var(--border-bright);
+  color:var(--accent-orange);
+  padding:14px 28px;
+  cursor:pointer;
+  position:relative;
+  transition:all .12s ease;
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  margin-top:6px;
+  width:100%;
+  justify-content:center;
+}
+
+.execute-btn:hover{
+  border-color:var(--accent-orange);
+  background:linear-gradient(180deg,#1a1a1a 0%,#0f0f0f 100%);
+  box-shadow:0 0 20px rgba(255,107,0,.12),inset 0 0 30px rgba(255,107,0,.03);
+}
+
+.execute-btn:active{
+  transform:translateY(1px);
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.5),0 0 10px rgba(255,107,0,.06);
+}
+
+.btn-icon{font-size:1.1em}
+
+/* ===== PROGRESS PANEL ===== */
+.progress-panel{grid-column:1 / -1}
+
+.progress-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:1px;
+  background:var(--border-color);
+  border:1px solid var(--border-color);
+}
+
+.progress-stage{
+  background:var(--bg-secondary);
+  padding:12px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.stage-top{display:flex;align-items:center;gap:10px}
+
+.stage-led{
+  width:10px;height:10px;
+  border-radius:50%;
+  flex-shrink:0;
+  box-shadow:0 0 6px currentColor;
+}
+.stage-led.done{background:var(--led-green);color:var(--led-green)}
+.stage-led.active{background:var(--led-orange);color:var(--led-orange);animation:pulse-led 1.2s ease-in-out infinite}
+.stage-led.pending{background:var(--led-dim);color:transparent;box-shadow:none}
+
+.stage-info{flex:1;display:flex;flex-direction:column;gap:2px}
+
+.stage-name{
+  font-size:.72rem;
+  font-weight:500;
+  letter-spacing:.5px;
+  text-transform:uppercase;
+  color:var(--text-primary);
+}
+
+.stage-status{
+  font-size:.58rem;
+  color:var(--text-muted);
+  letter-spacing:.5px;
+  text-transform:uppercase;
+}
+
+.meter-track{
+  height:6px;
+  background:var(--bg-primary);
+  border:1px solid var(--border-color);
+  position:relative;
+  overflow:hidden;
+}
+
+.meter-fill{
+  height:100%;
+  background:var(--accent-green);
+  transition:width .4s ease;
+  position:relative;
+}
+
+.meter-fill.active{
+  background:var(--accent-orange);
+  animation:meter-scan 1.5s linear infinite;
+}
+
+.meter-fill.pending{background:transparent}
+
+@keyframes meter-scan{
+  0%{box-shadow:inset 0 0 6px rgba(255,107,0,.3)}
+  50%{box-shadow:inset 0 0 12px rgba(255,107,0,.6)}
+  100%{box-shadow:inset 0 0 6px rgba(255,107,0,.3)}
+}
+
+.progress-overall{
+  margin-top:12px;
+  padding:12px 14px;
+  background:var(--bg-tertiary);
+  border:1px solid var(--border-color);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.progress-label{
+  font-size:.68rem;
+  color:var(--text-secondary);
+  letter-spacing:1px;
+  text-transform:uppercase;
+}
+
+.progress-percent{
+  font-family:'Space Mono',monospace;
+  font-size:1.6rem;
+  font-weight:700;
+  color:var(--accent-orange);
+  letter-spacing:2px;
+}
+
+.progress-percent::after{content:'%';font-size:.9rem;color:var(--text-muted);margin-left:2px}
+
+/* ===== VIDEO PLAYER ===== */
+.player-frame{
+  position:relative;
+  aspect-ratio:16/9;
+  background:#000;
+  overflow:hidden;
+  border:1px solid var(--border-color);
+}
+
+.player-corner{
+  position:absolute;
+  width:20px;height:20px;
+  border-color:var(--accent-orange);
+  border-style:solid;
+  border-width:0;
+  pointer-events:none;
+  opacity:.7;
+}
+.player-corner.tl{top:8px;left:8px;border-top-width:2px;border-left-width:2px}
+.player-corner.tr{top:8px;right:8px;border-top-width:2px;border-right-width:2px}
+.player-corner.bl{bottom:8px;left:8px;border-bottom-width:2px;border-left-width:2px}
+.player-corner.br{bottom:8px;right:8px;border-bottom-width:2px;border-right-width:2px}
+
+.player-overlay{
+  position:absolute;
+  inset:0;
+  background:
+    linear-gradient(rgba(255,107,0,.02) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,107,0,.02) 1px,transparent 1px);
+  background-size:40px 40px;
+  pointer-events:none;
+  animation:scanline 4s linear infinite;
+}
+
+@keyframes scanline{
+  0%{transform:translateY(0)}
+  100%{transform:translateY(40px)}
+}
+
+.player-content{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:12px;
+  z-index:1;
+}
+
+.play-icon{
+  width:56px;height:56px;
+  border:2px solid var(--accent-orange);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:.8;
+}
+
+.play-triangle{
+  width:0;height:0;
+  border-left:18px solid var(--accent-orange);
+  border-top:11px solid transparent;
+  border-bottom:11px solid transparent;
+  margin-left:4px;
+}
+
+.player-info{
+  font-size:.68rem;
+  color:var(--text-muted);
+  letter-spacing:1px;
+  text-align:center;
+}
+
+.player-time{
+  position:absolute;
+  bottom:10px;
+  left:14px;
+  right:14px;
+  display:flex;
+  justify-content:space-between;
+  font-size:.6rem;
+  color:var(--text-muted);
+  font-family:'Space Mono',monospace;
+  z-index:2;
+}
+
+.player-rec-dot{
+  position:absolute;
+  top:12px;right:36px;
+  width:8px;height:8px;
+  background:var(--accent-red);
+  border-radius:50%;
+  animation:pulse-led 1s ease-in-out infinite;
+  z-index:2;
+}
+
+.player-rec-label{
+  position:absolute;
+  top:11px;right:48px;
+  font-size:.55rem;
+  color:var(--accent-red);
+  letter-spacing:1px;
+  text-transform:uppercase;
+  z-index:2;
+}
+
+/* ===== SUBTITLE EDITOR ===== */
+.subtitle-panel{grid-column:1 / -1}
+
+.sub-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:.75rem;
+}
+
+.sub-table th{
+  background:var(--bg-tertiary);
+  color:var(--text-muted);
+  font-size:.58rem;
+  text-transform:uppercase;
+  letter-spacing:1.5px;
+  text-align:left;
+  padding:8px 10px;
+  border:1px solid var(--border-color);
+  font-weight:500;
+}
+
+.sub-table td{
+  padding:8px 10px;
+  border:1px solid var(--border-color);
+  background:var(--bg-secondary);
+  vertical-align:top;
+}
+
+.sub-table tr:hover td{background:var(--bg-tertiary)}
+
+.col-num{
+  font-family:'Space Mono',monospace;
+  color:var(--text-muted);
+  font-size:.7rem;
+  width:42px;
+  text-align:right;
+  user-select:none;
+}
+
+.col-time{
+  font-family:'Space Mono',monospace;
+  color:var(--accent-yellow);
+  font-size:.7rem;
+  width:110px;
+  white-space:nowrap;
+}
+
+.col-src,.col-tgt{
+  min-width:140px;
+}
+
+.sub-text{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.78rem;
+  background:var(--bg-primary);
+  border:1px solid var(--border-color);
+  color:var(--text-primary);
+  padding:6px 8px;
+  width:100%;
+  resize:vertical;
+  min-height:34px;
+  line-height:1.5;
+  outline:none;
+  transition:border-color .15s;
+}
+
+.sub-text:focus{border-color:var(--accent-orange)}
+
+.sub-text.tgt{color:var(--accent-yellow)}
+
+/* ===== DOWNLOAD BUTTONS ===== */
+.download-section{
+  grid-column:1 / -1;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.dl-btn{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.72rem;
+  font-weight:500;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  background:var(--bg-tertiary);
+  border:1px solid var(--border-bright);
+  color:var(--text-primary);
+  padding:10px 18px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  transition:all .12s;
+  flex:1;
+  min-width:140px;
+  justify-content:center;
+}
+
+.dl-btn:hover{
+  border-color:var(--accent-green);
+  color:var(--accent-green);
+  background:var(--bg-secondary);
+  box-shadow:0 0 12px rgba(0,255,65,.06);
+}
+
+.dl-btn:active{transform:translateY(1px)}
+
+.dl-icon{font-size:1rem}
+
+/* ===== FOOTER SYS INFO ===== */
+.sys-footer{
+  margin-top:12px;
+  border:1px solid var(--border-color);
+  background:var(--bg-secondary);
+  padding:10px 16px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:.6rem;
+  color:var(--text-muted);
+  letter-spacing:.5px;
+  text-transform:uppercase;
+}
+
+.sys-info-item{display:flex;align-items:center;gap:6px}
+
+.sys-info-item .dot{
+  width:5px;height:5px;
+  border-radius:50%;
+  background:var(--led-green);
+  box-shadow:0 0 4px var(--led-green);
+}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:720px){
+  .grid-main{grid-template-columns:1fr}
+  .progress-panel,.subtitle-panel,.download-section{grid-column:1}
+  .header{flex-direction:column;gap:10px;align-items:flex-start}
+  .progress-grid{grid-template-columns:1fr}
+  .sub-table{font-size:.68rem}
+  .sub-table th,.sub-table td{padding:6px 8px}
+  .dl-btn{min-width:100%;flex:1 1 100%}
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+  <div class="header-left">
+    <span class="header-title">[ SYS.TRANSLATOR v2.0 ]<span class="header-cursor"></span></span>
+    <span class="header-version">BUILD.2026.05.25 // BILIBILI SUB ENGINE</span>
+  </div>
+  <div class="status-leds">
+    <div class="led-group"><span class="led on-green"></span>系统就绪</div>
+    <div class="led-group"><span class="led on-orange"></span>处理中</div>
+    <div class="led-group"><span class="led dim"></span>队列空闲</div>
+  </div>
+</header>
+
+<!-- ===== INPUT FORM + EXECUTE ===== -->
+<div class="grid-main">
+
+  <section class="panel">
+    <div class="panel-header">
+      <span>▸ 输入参数配置</span>
+      <span>// CONFIG.IN</span>
+    </div>
+    <div class="panel-body">
+      <form class="cli-form" onsubmit="return false">
+        <div class="cli-row">
+          <label class="cli-label">视频链接<span class="colon">:</span></label>
+          <input class="cli-input" type="text" placeholder="https://www.bilibili.com/video/BVxxxxxxxxx" value="https://www.bilibili.com/video/BV1GJ411x7h7">
+        </div>
+        <div class="cli-row">
+          <label class="cli-label">源语言<span class="colon">:</span></label>
+          <div class="lang-selector-wrapper">
+            <select class="lang-select">
+              <option value="ja">JP — 日本語</option>
+              <option value="en">EN — English</option>
+              <option value="ko">KO — 한국어</option>
+              <option value="auto selected">AUTO — 自动检测</option>
+            </select>
+          </div>
+        </div>
+        <div class="cli-row">
+          <label class="cli-label">目标语言<span class="colon">:</span></label>
+          <div class="lang-selector-wrapper">
+            <select class="lang-select">
+              <option value="zh-cn selected">ZH-CN — 简体中文</option>
+              <option value="zh-tw">ZH-TW — 繁體中文</option>
+              <option value="en">EN — English</option>
+              <option value="ja">JP — 日本語</option>
+            </select>
+          </div>
+        </div>
+        <div class="cli-row">
+          <label class="cli-label">备注信息<span class="colon">:</span></label>
+          <textarea class="cli-textarea" placeholder="可选：添加额外指令或上下文...">启用AI语义优化，保持术语一致性</textarea>
+        </div>
+        <button class="execute-btn" type="button">
+          <span class="btn-icon">▶</span>EXECUTE
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ===== VIDEO PLAYER ===== -->
+  <section class="panel">
+    <div class="panel-header">
+      <span>▸ 视频预览窗口</span>
+      <span>// MONITOR.01</span>
+    </div>
+    <div class="panel-body" style="padding:10px">
+      <div class="player-frame">
+        <div class="player-corner tl"></div>
+        <div class="player-corner tr"></div>
+        <div class="player-corner bl"></div>
+        <div class="player-corner br"></div>
+        <div class="player-overlay"></div>
+        <div class="player-rec-label">REC</div>
+        <div class="player-rec-dot"></div>
+        <div class="player-content">
+          <div class="play-icon"><div class="play-triangle"></div></div>
+          <div class="player-info">CAM-01 // SIGNAL ACTIVE<br>BV1GJ411x7h7</div>
+        </div>
+        <div class="player-time">
+          <span>00:03:47</span>
+          <span>/ 00:12:33</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== PROGRESS PANEL ===== -->
+  <section class="panel progress-panel">
+    <div class="panel-header">
+      <span>▸ 系统处理状态</span>
+      <span>// SYS.MONITOR</span>
+    </div>
+    <div class="panel-body" style="padding:10px">
+      <div class="progress-grid">
+        <!-- Stage 1: Done -->
+        <div class="progress-stage">
+          <div class="stage-top">
+            <span class="stage-led done"></span>
+            <div class="stage-info">
+              <span class="stage-name">01 — 视频抓取</span>
+              <span class="stage-status">COMPLETE</span>
+            </div>
+          </div>
+          <div class="meter-track"><div class="meter-fill" style="width:100%"></div></div>
+        </div>
+        <!-- Stage 2: Done -->
+        <div class="progress-stage">
+          <div class="stage-top">
+            <span class="stage-led done"></span>
+            <div class="stage-info">
+              <span class="stage-name">02 — 语音识别</span>
+              <span class="stage-status">COMPLETE</span>
+            </div>
+          </div>
+          <div class="meter-track"><div class="meter-fill" style="width:100%"></div></div>
+        </div>
+        <!-- Stage 3: Done -->
+        <div class="progress-stage">
+          <div class="stage-top">
+            <span class="stage-led done"></span>
+            <div class="stage-info">
+              <span class="stage-name">03 — 文本分段</span>
+              <span class="stage-status">COMPLETE</span>
+            </div>
+          </div>
+          <div class="meter-track"><div class="meter-fill" style="width:100%"></div></div>
+        </div>
+        <!-- Stage 4: Active -->
+        <div class="progress-stage">
+          <div class="stage-top">
+            <span class="stage-led active"></span>
+            <div class="stage-info">
+              <span class="stage-name">04 — AI 翻译引擎</span>
+              <span class="stage-status" style="color:var(--accent-orange)">PROCESSING...</span>
+            </div>
+          </div>
+          <div class="meter-track"><div class="meter-fill active" style="width:67%"></div></div>
+        </div>
+        <!-- Stage 5: Pending -->
+        <div class="progress-stage">
+          <div class="stage-top">
+            <span class="stage-led pending"></span>
+            <div class="stage-info">
+              <span class="stage-name">05 — 时间轴对齐</span>
+              <span class="stage-status">STANDBY</span>
+            </div>
+          </div>
+          <div class="meter-track"><div class="meter-fill pending" style="width:0%"></div></div>
+        </div>
+        <!-- Stage 6: Pending -->
+        <div class="progress-stage">
+          <div class="stage-top">
+            <span class="stage-led pending"></span>
+            <div class="stage-info">
+              <span class="stage-name">06 — 字幕渲染</span>
+              <span class="stage-status">STANDBY</span>
+            </div>
+          </div>
+          <div class="meter-track"><div class="meter-fill pending" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="progress-overall">
+        <span class="progress-label">总进度 TOTAL_PROGRESS</span>
+        <span class="progress-percent">67</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== SUBTITLE EDITOR ===== -->
+  <section class="panel subtitle-panel">
+    <div class="panel-header">
+      <span>▸ 字幕编辑器</span>
+      <span>// SUB.EDITOR // 128 行</span>
+    </div>
+    <div class="panel-body" style="padding:0;overflow-x:auto">
+      <table class="sub-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>时间码</th>
+            <th>原文 (JP)</th>
+            <th>译文 (ZH)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-num">001</td>
+            <td class="col-time">00:00:01.200</td>
+            <td class="col-src"><textarea class="sub-text" rows="2">皆さん、こんにちは！</textarea></td>
+            <td class="col-tgt"><textarea class="sub-text tgt" rows="2">大家好！</textarea></td>
+          </tr>
+          <tr>
+            <td class="col-num">002</td>
+            <td class="col-time">00:00:03.800</td>
+            <td class="col-src"><textarea class="sub-text" rows="2">今日は特別な技術を紹介します。</textarea></td>
+            <td class="col-tgt"><textarea class="sub-text tgt" rows="2">今天要介绍一项特别的技术。</textarea></td>
+          </tr>
+          <tr>
+            <td class="col-num">003</td>
+            <td class="col-time">00:00:07.150</td>
+            <td class="col-src"><textarea class="sub-text" rows="2">まず、この画面をご覧ください。</textarea></td>
+            <td class="col-tgt"><textarea class="sub-text tgt" rows="2">首先，请看这个画面。</textarea></td>
+          </tr>
+          <tr>
+            <td class="col-num">004</td>
+            <td class="col-time">00:00:11.420</td>
+            <td class="col-src"><textarea class="sub-text" rows="2">ここがポイントなんです。</textarea></td>
+            <td class="col-tgt"><textarea class="sub-text tgt" rows="2">这里就是关键所在。</textarea></td>
+          </tr>
+          <tr>
+            <td class="col-num">005</td>
+            <td class="col-time">00:00:14.900</td>
+            <td class="col-src"><textarea class="sub-text" rows="2">従来の方法では、これが最大の課題でした。</textarea></td>
+            <td class="col-tgt"><textarea class="sub-text tgt" rows="2">传统方法中，这是最大的难题。</textarea></td>
+          </tr>
+          <tr>
+            <td class="col-num">006</td>
+            <td class="col-time">00:00:19.300</td>
+            <td class="col-src"><textarea class="sub-text" rows="2">でも、新しいアプローチで解決できます。</textarea></td>
+            <td class="col-tgt"><textarea class="sub-text tgt" rows="2">不过，用新方法就能解决。</textarea></td>
+          </tr>
+          <tr>
+            <td class="col-num">007</td>
+            <td class="col-time">00:00:23.600</td>
+            <td class="col-src"><textarea class="sub-text" rows="2">コードを見せますね。</textarea></td>
+            <td class="col-tgt"><textarea class="sub-text tgt" rows="2">来看一下代码。</textarea></td>
+          </tr>
+          <tr>
+            <td class="col-num">...</td>
+            <td class="col-time">--:--:--.--</td>
+            <td class="col-src" colspan="2" style="text-align:center;color:var(--text-muted);padding:16px;font-size:.7rem;letter-spacing:1px">// ... 共 128 行字幕数据 ... //</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== DOWNLOAD BUTTONS ===== -->
+  <section class="download-section">
+    <button class="dl-btn" type="button"><span class="dl-icon">📄</span> SRT 字幕文件</button>
+    <button class="dl-btn" type="button"><span class="dl-icon">📋</span> ASS 样式字幕</button>
+    <button class="dl-btn" type="button"><span class="dl-icon">📝</span> TXT 纯文本</button>
+    <button class="dl-btn" type="button"><span class="dl-icon">💾</span> JSON 数据包</button>
+  </section>
+
+</div><!-- /.grid-main -->
+
+<!-- ===== SYSTEM FOOTER ===== -->
+<footer class="sys-footer">
+  <div class="sys-info-item"><span class="dot"></span>CPU 23%</div>
+  <div class="sys-info-item"><span class="dot"></span>MEM 1.2GB / 8GB</div>
+  <div class="sys-info-item"><span class="dot"></span>NET 2.4MB/s ↓</div>
+  <div class="sys-info-item">PID 48291 // UPTIME 00:14:33</div>
+</footer>
+
+</div><!-- /.container -->
+
+</body>
+</html>
