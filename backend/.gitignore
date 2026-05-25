@@ -1,0 +1,8 @@
+target/
+*.class
+*.jar
+*.war
+.env
+temp/
+.idea/
+*.iml
