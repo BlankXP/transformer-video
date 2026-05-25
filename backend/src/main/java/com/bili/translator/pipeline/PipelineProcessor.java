@@ -105,15 +105,29 @@ public class PipelineProcessor {
         try {
             Path taskDir = fileManager.createTaskDir(taskId);
             Path videoPath = taskDir.resolve("video.mp4");
-            Path audioPath = taskDir.resolve("audio.wav");
 
             notifyProgress(taskId, "downloading", 0.0f, "开始下载视频");
             Path downloadedPath = videoDownloader.download(request.getUrl(), taskDir,
-                (p, m) -> notifyProgress(taskId, "downloading", 0.0f + p * 0.25f, m));
+                (p, m) -> notifyProgress(taskId, "downloading", p * (request.isTranslateSubtitles() ? 0.25f : 0.95f), m));
             if (!downloadedPath.equals(videoPath)) {
                 Files.move(downloadedPath, videoPath, StandardCopyOption.REPLACE_EXISTING);
             }
-            notifyProgress(taskId, "downloading", 0.25f, "视频下载完成");
+            notifyProgress(taskId, "downloading", request.isTranslateSubtitles() ? 0.25f : 0.95f, "视频下载完成");
+
+            if (!request.isTranslateSubtitles()) {
+                TaskResult result = new TaskResult();
+                result.setVideoPath(videoPath.toString());
+                results.put(taskId, result);
+
+                TaskStatus status = tasks.get(taskId);
+                if (status != null) {
+                    status.setResult(result);
+                }
+                notifyProgress(taskId, "completed", 1.0f, "视频下载完成");
+                return;
+            }
+
+            Path audioPath = taskDir.resolve("audio.wav");
 
             notifyProgress(taskId, "extracting_audio", 0.25f, "开始提取音频");
             audioExtractor.extract(videoPath, audioPath);
@@ -138,51 +152,35 @@ public class PipelineProcessor {
             Path srtPath = taskDir.resolve("subtitles.srt");
             Path burnedVideoPath = null;
 
-            if (request.isTranslateSubtitles()) {
-                notifyProgress(taskId, "translating", 0.65f, "开始翻译字幕");
-                List<TranslatorService.TranslatedItem> translated =
-                    translatorService.translate(recognized, request.getSourceLanguage(), request.getTargetLanguage(),
-                        (p, m) -> notifyProgress(taskId, "translating", 0.65f + p * 0.20f, m));
-                notifyProgress(taskId, "translating", 0.85f, "字幕翻译完成");
+            notifyProgress(taskId, "translating", 0.65f, "开始翻译字幕");
+            List<TranslatorService.TranslatedItem> translated =
+                translatorService.translate(recognized, request.getSourceLanguage(), request.getTargetLanguage(),
+                    (p, m) -> notifyProgress(taskId, "translating", 0.65f + p * 0.20f, m));
+            notifyProgress(taskId, "translating", 0.85f, "字幕翻译完成");
 
-                notifyProgress(taskId, "generating_subtitle", 0.85f, "开始生成字幕文件");
-                for (int i = 0; i < translated.size(); i++) {
-                    TranslatorService.TranslatedItem item = translated.get(i);
-                    SubtitleEntry entry = new SubtitleEntry();
-                    entry.setIndex(i + 1);
-                    entry.setStartTime(SubtitleGenerator.secondsToSrtTime(item.getStartTime()));
-                    entry.setEndTime(SubtitleGenerator.secondsToSrtTime(item.getEndTime()));
-                    entry.setSourceText(item.getText());
-                    entry.setTranslatedText(item.getTranslatedText());
-                    subtitleEntries.add(entry);
-                }
-                subtitleGenerator.generateSrt(subtitleEntries, srtPath, true);
-                notifyProgress(taskId, "generating_subtitle", 0.90f, "字幕文件生成完成");
+            notifyProgress(taskId, "generating_subtitle", 0.85f, "开始生成字幕文件");
+            for (int i = 0; i < translated.size(); i++) {
+                TranslatorService.TranslatedItem item = translated.get(i);
+                SubtitleEntry entry = new SubtitleEntry();
+                entry.setIndex(i + 1);
+                entry.setStartTime(SubtitleGenerator.secondsToSrtTime(item.getStartTime()));
+                entry.setEndTime(SubtitleGenerator.secondsToSrtTime(item.getEndTime()));
+                entry.setSourceText(item.getText());
+                entry.setTranslatedText(item.getTranslatedText());
+                subtitleEntries.add(entry);
+            }
+            subtitleGenerator.generateSrt(subtitleEntries, srtPath, true);
+            notifyProgress(taskId, "generating_subtitle", 0.90f, "字幕文件生成完成");
 
-                burnedVideoPath = taskDir.resolve("video_burned.mp4");
-                notifyProgress(taskId, "burning_subtitle", 0.90f, "开始烧录字幕到视频");
-                try {
-                    subtitleBurner.burn(videoPath, srtPath, burnedVideoPath);
-                    notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录完成");
-                } catch (Exception e) {
-                    log.warn("字幕烧录失败，跳过烧录步骤: {}", e.getMessage());
-                    burnedVideoPath = null;
-                    notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录失败已跳过");
-                }
-            } else {
-                notifyProgress(taskId, "generating_subtitle", 0.65f, "生成原始字幕文件");
-                for (int i = 0; i < recognized.size(); i++) {
-                    SpeechRecognitionService.RecognizedItem item = recognized.get(i);
-                    SubtitleEntry entry = new SubtitleEntry();
-                    entry.setIndex(i + 1);
-                    entry.setStartTime(SubtitleGenerator.secondsToSrtTime(item.getStartTime()));
-                    entry.setEndTime(SubtitleGenerator.secondsToSrtTime(item.getEndTime()));
-                    entry.setSourceText(item.getText());
-                    entry.setTranslatedText("");
-                    subtitleEntries.add(entry);
-                }
-                subtitleGenerator.generateSrt(subtitleEntries, srtPath, false);
-                notifyProgress(taskId, "generating_subtitle", 0.98f, "字幕文件生成完成");
+            burnedVideoPath = taskDir.resolve("video_burned.mp4");
+            notifyProgress(taskId, "burning_subtitle", 0.90f, "开始烧录字幕到视频");
+            try {
+                subtitleBurner.burn(videoPath, srtPath, burnedVideoPath);
+                notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录完成");
+            } catch (Exception e) {
+                log.warn("字幕烧录失败，跳过烧录步骤: {}", e.getMessage());
+                burnedVideoPath = null;
+                notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录失败已跳过");
             }
 
             double duration = audioExtractor.getDuration(audioPath);
