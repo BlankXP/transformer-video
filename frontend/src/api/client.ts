@@ -1,6 +1,8 @@
 import type { ProcessRequest, TaskStatus, SubtitleEntry } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+export { API_BASE_URL };
 
 export async function submitTask(request: ProcessRequest): Promise<{ task_id: string }> {
   const response = await fetch(`${API_BASE_URL}/api/video/process`, {
