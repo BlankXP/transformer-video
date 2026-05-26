@@ -2,19 +2,17 @@ services:
   backend:
     build:
       context: ./backend
-    ports:
-      - "8000:8000"
+    network_mode: host
     volumes:
       - temp-data:/app/temp
     environment:
-      - APP_DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
-    ports:
-      - "80:80"
+    network_mode: host
     depends_on:
       - backend
     restart: unless-stopped
