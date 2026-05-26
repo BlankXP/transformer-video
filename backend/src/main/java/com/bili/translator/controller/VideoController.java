@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -41,6 +42,44 @@ public class VideoController {
 
         String taskId = processor.createTask(request);
         processor.process(taskId, request);
+        return ResponseEntity.ok(Map.of("task_id", taskId));
+    }
+
+    @GetMapping("/tasks")
+    public ResponseEntity<List<TaskStatus>> listTasks() {
+        return ResponseEntity.ok(processor.getAllTasks());
+    }
+
+    @PostMapping("/{taskId}/retry")
+    public ResponseEntity<?> retryTask(@PathVariable String taskId, HttpServletRequest httpRequest) {
+        TaskStatus status = processor.getTaskStatus(taskId);
+        if (status == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        if (!"failed".equals(status.getStage())) {
+            return ResponseEntity.status(400).body(Map.of("error", "只能重试失败的任务"));
+        }
+
+        ProcessRequest request = status.getRequest();
+        if (request != null && request.isTranslateSubtitles()) {
+            String token = extractToken(httpRequest);
+            if (token == null || !JwtUtil.validateToken(token, appProperties.getJwtSecret())) {
+                return ResponseEntity.status(401).body(Map.of("error", "翻译字幕需要登录，请先登录"));
+            }
+        }
+
+        status.setStage("downloading");
+        status.setProgress(0.0);
+        status.setMessage("正在重试任务...");
+        processor.persistTask(taskId);
+
+        if (request != null) {
+            processor.process(taskId, request);
+        } else {
+            return ResponseEntity.status(400).body(Map.of("error", "任务请求参数缺失，无法重试"));
+        }
+
         return ResponseEntity.ok(Map.of("task_id", taskId));
     }
 

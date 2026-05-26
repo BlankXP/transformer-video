@@ -56,6 +56,30 @@ export async function submitTask(request: ProcessRequest): Promise<{ task_id: st
   return response.json();
 }
 
+export async function listTasks(): Promise<TaskStatus[]> {
+  const response = await fetch(`${API_BASE_URL}/api/video/tasks`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) return [];
+  return response.json();
+}
+
+export async function retryTask(taskId: string): Promise<{ task_id: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/retry`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (response.status === 401) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || '翻译字幕需要登录');
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || '重试失败');
+  }
+  return response.json();
+}
+
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
   const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/status`, {
     headers: authHeaders(),

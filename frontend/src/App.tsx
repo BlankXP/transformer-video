@@ -4,6 +4,7 @@ import ProgressPanel from "./components/ProgressPanel";
 import SubtitleEditor from "./components/SubtitleEditor";
 import VideoPlayer from "./components/VideoPlayer";
 import DownloadPanel from "./components/DownloadPanel";
+import TaskHistoryPanel from "./components/TaskHistoryPanel";
 import LoginPage from "./components/LoginPage";
 import useTask from "./hooks/useTask";
 import useWebSocket from "./hooks/useWebSocket";
@@ -75,6 +76,14 @@ function App() {
     }
   };
 
+  const handleTaskSelect = (_selectedTaskId: string) => {
+    void 0;
+  };
+
+  const handleRetry = (_retryTaskId: string) => {
+    void 0;
+  };
+
   if (showLogin && !authenticated) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -132,6 +141,7 @@ function App() {
           <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading} />
         )}
         <DownloadPanel taskId={taskId} subtitles={subtitles} result={status?.result} />
+        <TaskHistoryPanel authenticated={authenticated} onTaskSelect={handleTaskSelect} onRetry={handleRetry} />
       </main>
     </div>
   );

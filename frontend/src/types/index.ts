@@ -14,6 +14,8 @@ export interface TaskStatus {
   progress: number;
   message: string;
   result?: TaskResult;
+  request?: ProcessRequest;
+  created_at?: number;
 }
 
 export interface SubtitleEntry {
@@ -28,8 +30,10 @@ export interface TaskResult {
   video_path: string;
   srt_path: string;
   burned_video_path?: string;
+  recognized_text_path?: string;
   subtitles: SubtitleEntry[];
   duration: number;
+  completed_steps?: string;
 }
 
 export interface ProcessRequest {
