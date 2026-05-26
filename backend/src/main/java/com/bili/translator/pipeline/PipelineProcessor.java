@@ -353,4 +353,26 @@ public class PipelineProcessor {
             return false;
         }
     }
+
+    public boolean deleteTask(String taskId) {
+        TaskStatus removed = tasks.remove(taskId);
+        if (removed == null) return false;
+
+        progressCallbacks.remove(taskId);
+
+        try {
+            Path taskDir = fileManager.getTaskDir(taskId);
+            if (Files.exists(taskDir)) {
+                Files.walk(taskDir)
+                     .sorted(java.util.Comparator.reverseOrder())
+                     .forEach(p -> {
+                         try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+                     });
+            }
+        } catch (Exception e) {
+            log.warn("删除任务目录失败: {}", taskId, e);
+        }
+
+        return true;
+    }
 }

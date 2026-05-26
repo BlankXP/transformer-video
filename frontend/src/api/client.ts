@@ -80,6 +80,16 @@ export async function retryTask(taskId: string): Promise<{ task_id: string }> {
   return response.json();
 }
 
+export async function deleteTask(taskId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/video/${taskId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error('删除失败');
+  }
+}
+
 export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
   const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/status`, {
     headers: authHeaders(),

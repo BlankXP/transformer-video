@@ -92,6 +92,15 @@ public class VideoController {
         return ResponseEntity.ok(status);
     }
 
+    @DeleteMapping("/{taskId}")
+    public ResponseEntity<?> deleteTask(@PathVariable String taskId) {
+        boolean deleted = processor.deleteTask(taskId);
+        if (!deleted) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of("message", "任务已删除"));
+    }
+
     @GetMapping("/{taskId}/burned")
     public ResponseEntity<Resource> downloadBurnedVideo(@PathVariable String taskId) {
         TaskResult result = processor.getTaskResult(taskId);

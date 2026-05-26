@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { listTasks, retryTask } from "../api/client";
+import { listTasks, retryTask, deleteTask } from "../api/client";
 import type { TaskStatus, TaskStage } from "../types";
 
 const STAGE_LABELS: Record<string, string> = {
@@ -33,12 +33,14 @@ interface Props {
   authenticated: boolean;
   onTaskSelect: (taskId: string) => void;
   onRetry: (taskId: string) => void;
+  onDelete: (taskId: string) => void;
 }
 
-function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry }: Props) {
+function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Props) {
   const [tasks, setTasks] = useState<TaskStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
     if (!authenticated) return;
@@ -69,6 +71,20 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry }: Props) {
       alert(e instanceof Error ? e.message : "重试失败");
     } finally {
       setRetrying(null);
+    }
+  };
+
+  const handleDelete = async (taskId: string) => {
+    if (!confirm("确定删除该任务？删除后不可恢复。")) return;
+    setDeleting(taskId);
+    try {
+      await deleteTask(taskId);
+      onDelete(taskId);
+      await fetchTasks();
+    } catch {
+      alert("删除失败");
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -122,6 +138,13 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry }: Props) {
                     {retrying === task.task_id ? "重试中..." : "重试"}
                   </button>
                 )}
+                <button
+                  onClick={() => handleDelete(task.task_id)}
+                  disabled={deleting === task.task_id}
+                  className="text-xs px-3 py-1.5 bg-gray-200 text-gray-600 rounded-lg hover:bg-red-500 hover:text-white disabled:bg-gray-300 transition whitespace-nowrap"
+                >
+                  {deleting === task.task_id ? "删除中..." : "删除"}
+                </button>
               </div>
             </div>
           ))}

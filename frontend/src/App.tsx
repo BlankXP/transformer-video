@@ -89,6 +89,13 @@ function App() {
     await selectTask(retryTaskId);
   };
 
+  const handleDelete = (deletedTaskId: string) => {
+    if (taskId === deletedTaskId) {
+      setSubtitles([]);
+      setVideoUrl(null);
+    }
+  };
+
   if (showLogin && !authenticated) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -146,7 +153,7 @@ function App() {
           <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading} />
         )}
         <DownloadPanel taskId={taskId} subtitles={subtitles} result={status?.result} />
-        <TaskHistoryPanel authenticated={authenticated} onTaskSelect={handleTaskSelect} onRetry={handleRetry} />
+        <TaskHistoryPanel authenticated={authenticated} onTaskSelect={handleTaskSelect} onRetry={handleRetry} onDelete={handleDelete} />
       </main>
     </div>
   );
