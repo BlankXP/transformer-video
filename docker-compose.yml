@@ -4,7 +4,7 @@ services:
       context: ./backend
     network_mode: host
     volumes:
-      - temp-data:/app/temp
+      - ./backend/temp:/app/temp
     env_file:
       - ./backend/.env
     restart: unless-stopped
@@ -16,6 +16,3 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  temp-data:
