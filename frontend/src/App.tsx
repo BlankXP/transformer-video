@@ -17,8 +17,9 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
+  const [selectedUrl, setSelectedUrl] = useState<string>("");
 
-  const { taskId, status, loading, startTask, refreshStatus } = useTask();
+  const { taskId, status, loading, startTask, refreshStatus, selectTask } = useTask();
   const { stage, progress, message } = useWebSocket(taskId);
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -35,6 +36,9 @@ function App() {
       if (status.result.video_path) {
         setVideoUrl(`${API_BASE_URL}/videos/${taskId}/video.mp4`);
       }
+    } else {
+      setSubtitles([]);
+      setVideoUrl(null);
     }
   }, [status, taskId]);
 
@@ -61,6 +65,7 @@ function App() {
   };
 
   const handleSubmit = async (request: ProcessRequest) => {
+    setSelectedUrl(request.url);
     setSubtitles([]);
     setVideoUrl(null);
     await startTask(request);
@@ -76,12 +81,12 @@ function App() {
     }
   };
 
-  const handleTaskSelect = (_selectedTaskId: string) => {
-    void 0;
+  const handleTaskSelect = async (selectedTaskId: string) => {
+    await selectTask(selectedTaskId);
   };
 
-  const handleRetry = (_retryTaskId: string) => {
-    void 0;
+  const handleRetry = async (retryTaskId: string) => {
+    await selectTask(retryTaskId);
   };
 
   if (showLogin && !authenticated) {
@@ -132,7 +137,7 @@ function App() {
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        <VideoInput onSubmit={handleSubmit} loading={loading} authenticated={authenticated} onLoginClick={() => setShowLogin(true)} />
+        <VideoInput onSubmit={handleSubmit} loading={loading} authenticated={authenticated} onLoginClick={() => setShowLogin(true)} initialUrl={selectedUrl} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <ProgressPanel stage={stage} progress={progress} message={message} />
           <VideoPlayer videoUrl={videoUrl} />

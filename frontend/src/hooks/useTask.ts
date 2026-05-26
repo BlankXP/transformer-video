@@ -33,5 +33,15 @@ export default function useTask() {
     }
   }, [taskId]);
 
-  return { taskId, status, loading, error, startTask, refreshStatus };
+  const selectTask = useCallback(async (id: string) => {
+    setTaskId(id);
+    try {
+      const s = await getTaskStatus(id);
+      setStatus(s);
+    } catch {
+      void 0;
+    }
+  }, []);
+
+  return { taskId, status, loading, error, startTask, refreshStatus, selectTask, setTaskId };
 }

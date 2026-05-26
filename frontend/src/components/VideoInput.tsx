@@ -16,9 +16,10 @@ interface Props {
   loading: boolean;
   authenticated: boolean;
   onLoginClick: () => void;
+  initialUrl?: string;
 }
 
-function VideoInput({ onSubmit, loading, authenticated, onLoginClick }: Props) {
+function VideoInput({ onSubmit, loading, authenticated, onLoginClick, initialUrl }: Props) {
   const [url, setUrl] = useState("");
   const [sourceLanguage, setSourceLanguage] = useState("zh");
   const [targetLanguage, setTargetLanguage] = useState("en");
@@ -29,6 +30,12 @@ function VideoInput({ onSubmit, loading, authenticated, onLoginClick }: Props) {
       setTranslateSubtitles(false);
     }
   }, [authenticated]);
+
+  useEffect(() => {
+    if (initialUrl) {
+      setUrl(initialUrl);
+    }
+  }, [initialUrl]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
