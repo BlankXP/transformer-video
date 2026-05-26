@@ -15,6 +15,10 @@ public class AppProperties {
     private int audioSegmentDuration = 300;
     private String asrModel = "paraformer-realtime-v2";
     private String translationModel = "qwen-plus";
+    private String authUsername = "admin";
+    private String authPassword = "admin123";
+    private String jwtSecret = "bili-translator-default-jwt-secret-key-2024";
+    private long jwtExpiration = 86400000;
 
     public String getDashscopeApiKey() {
         return dashscopeApiKey;
@@ -78,5 +82,37 @@ public class AppProperties {
 
     public void setTranslationModel(String translationModel) {
         this.translationModel = translationModel;
+    }
+
+    public String getAuthUsername() {
+        return authUsername;
+    }
+
+    public void setAuthUsername(String authUsername) {
+        this.authUsername = authUsername;
+    }
+
+    public String getAuthPassword() {
+        return authPassword;
+    }
+
+    public void setAuthPassword(String authPassword) {
+        this.authPassword = authPassword;
+    }
+
+    public String getJwtSecret() {
+        return jwtSecret;
+    }
+
+    public void setJwtSecret(String jwtSecret) {
+        this.jwtSecret = jwtSecret;
+    }
+
+    public long getJwtExpiration() {
+        return jwtExpiration;
+    }
+
+    public void setJwtExpiration(long jwtExpiration) {
+        this.jwtExpiration = jwtExpiration;
     }
 }
