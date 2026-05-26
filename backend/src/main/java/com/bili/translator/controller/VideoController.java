@@ -1,9 +1,12 @@
 package com.bili.translator.controller;
 
+import com.bili.translator.config.AppProperties;
 import com.bili.translator.model.ProcessRequest;
 import com.bili.translator.model.TaskResult;
 import com.bili.translator.model.TaskStatus;
 import com.bili.translator.pipeline.PipelineProcessor;
+import com.bili.translator.util.JwtUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -20,16 +23,25 @@ import java.util.Map;
 public class VideoController {
 
     private final PipelineProcessor processor;
+    private final AppProperties appProperties;
 
-    public VideoController(PipelineProcessor processor) {
+    public VideoController(PipelineProcessor processor, AppProperties appProperties) {
         this.processor = processor;
+        this.appProperties = appProperties;
     }
 
     @PostMapping("/process")
-    public Map<String, String> processVideo(@RequestBody ProcessRequest request) {
+    public ResponseEntity<?> processVideo(@RequestBody ProcessRequest request, HttpServletRequest httpRequest) {
+        if (request.isTranslateSubtitles()) {
+            String token = extractToken(httpRequest);
+            if (token == null || !JwtUtil.validateToken(token, appProperties.getJwtSecret())) {
+                return ResponseEntity.status(401).body(Map.of("error", "翻译字幕需要登录，请先登录"));
+            }
+        }
+
         String taskId = processor.createTask(request);
         processor.process(taskId, request);
-        return Map.of("task_id", taskId);
+        return ResponseEntity.ok(Map.of("task_id", taskId));
     }
 
     @GetMapping("/{taskId}/status")
@@ -58,5 +70,19 @@ public class VideoController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + taskId + "_burned.mp4\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
+    }
+
+    private String extractToken(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+
+        String queryToken = request.getParameter("token");
+        if (queryToken != null && !queryToken.isBlank()) {
+            return queryToken;
+        }
+
+        return null;
     }
 }

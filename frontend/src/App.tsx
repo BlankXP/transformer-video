@@ -12,6 +12,7 @@ import type { SubtitleEntry, ProcessRequest } from "./types";
 
 function App() {
   const [authenticated, setAuthenticated] = useState(!!getToken());
+  const [showLogin, setShowLogin] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
@@ -44,6 +45,7 @@ function App() {
       setToken(result.token);
       setUsername(result.username);
       setAuthenticated(true);
+      setShowLogin(false);
     } catch (e: unknown) {
       setAuthError(e instanceof Error ? e.message : "登录失败");
     } finally {
@@ -73,8 +75,22 @@ function App() {
     }
   };
 
-  if (!authenticated) {
-    return <LoginPage onLogin={handleLogin} error={authError} loading={authLoading} />;
+  if (showLogin && !authenticated) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-sm mx-auto pt-20">
+          <LoginPage onLogin={handleLogin} error={authError} loading={authLoading} />
+          <div className="text-center mt-4">
+            <button
+              onClick={() => { setShowLogin(false); setAuthError(null); }}
+              className="text-sm text-gray-500 hover:text-gray-700 transition"
+            >
+              返回
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -85,23 +101,36 @@ function App() {
             B站视频翻译字幕生成器
           </h1>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">{username}</span>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-gray-500 hover:text-red-600 transition"
-            >
-              退出登录
-            </button>
+            {authenticated ? (
+              <>
+                <span className="text-sm text-gray-500">{username}</span>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-gray-500 hover:text-red-600 transition"
+                >
+                  退出登录
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowLogin(true)}
+                className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                登录
+              </button>
+            )}
           </div>
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        <VideoInput onSubmit={handleSubmit} loading={loading} />
+        <VideoInput onSubmit={handleSubmit} loading={loading} authenticated={authenticated} onLoginClick={() => setShowLogin(true)} />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <ProgressPanel stage={stage} progress={progress} message={message} />
           <VideoPlayer videoUrl={videoUrl} />
         </div>
-        <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading} />
+        {authenticated && (
+          <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading} />
+        )}
         <DownloadPanel taskId={taskId} subtitles={subtitles} result={status?.result} />
       </main>
     </div>

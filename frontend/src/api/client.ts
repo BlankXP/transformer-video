@@ -47,9 +47,11 @@ export async function submitTask(request: ProcessRequest): Promise<{ task_id: st
     body: JSON.stringify(request),
   });
   if (response.status === 401) {
-    removeToken();
-    window.location.reload();
-    throw new Error('登录已过期');
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || '翻译字幕需要登录');
+  }
+  if (!response.ok) {
+    throw new Error('任务提交失败');
   }
   return response.json();
 }
@@ -58,27 +60,22 @@ export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
   const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/status`, {
     headers: authHeaders(),
   });
-  if (response.status === 401) {
-    removeToken();
-    window.location.reload();
-    throw new Error('登录已过期');
-  }
   return response.json();
 }
 
 export function getSubtitleSrtUrl(taskId: string): string {
   const token = getToken();
-  return `${API_BASE_URL}/api/subtitle/${taskId}/srt?token=${token || ''}`;
+  return `${API_BASE_URL}/api/subtitle/${taskId}/srt${token ? '?token=' + token : ''}`;
 }
 
 export function getRecognizedTxtUrl(taskId: string): string {
   const token = getToken();
-  return `${API_BASE_URL}/api/subtitle/${taskId}/txt?token=${token || ''}`;
+  return `${API_BASE_URL}/api/subtitle/${taskId}/txt${token ? '?token=' + token : ''}`;
 }
 
 export function getBurnedVideoUrl(taskId: string): string {
   const token = getToken();
-  return `${API_BASE_URL}/api/video/${taskId}/burned?token=${token || ''}`;
+  return `${API_BASE_URL}/api/video/${taskId}/burned${token ? '?token=' + token : ''}`;
 }
 
 export async function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): Promise<void> {
@@ -89,7 +86,6 @@ export async function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): 
   });
   if (response.status === 401) {
     removeToken();
-    window.location.reload();
-    throw new Error('登录已过期');
+    throw new Error('登录已过期，请重新登录');
   }
 }
