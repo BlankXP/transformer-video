@@ -134,10 +134,7 @@ public class PipelineProcessor {
 
     public List<TaskStatus> getAllTasks() {
         List<TaskStatus> list = new ArrayList<>(tasks.values());
-        list.sort((a, b) -> Long.compare(
-            b.getCreatedAt() != null ? b.getCreatedAt() : 0,
-            a.getCreatedAt() != null ? a.getCreatedAt() : 0
-        ));
+        list.sort((a, b) -> Long.compare(b.getCreatedAt(), a.getCreatedAt()));
         return list;
     }
 
