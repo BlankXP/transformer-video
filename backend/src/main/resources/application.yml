@@ -14,3 +14,7 @@ app:
   audio-segment-duration: ${AUDIO_SEGMENT_DURATION:300}
   asr-model: ${ASR_MODEL:paraformer-realtime-v2}
   translation-model: ${TRANSLATION_MODEL:qwen-plus}
+  auth-username: ${AUTH_USERNAME:admin}
+  auth-password: ${AUTH_PASSWORD:REDACTED_OLD_PASSWORD}
+  jwt-secret: ${JWT_SECRET:REDACTED_JWT_SECRET}
+  jwt-expiration: ${JWT_EXPIRATION:86400000}

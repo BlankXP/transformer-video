@@ -4,12 +4,18 @@ import ProgressPanel from "./components/ProgressPanel";
 import SubtitleEditor from "./components/SubtitleEditor";
 import VideoPlayer from "./components/VideoPlayer";
 import DownloadPanel from "./components/DownloadPanel";
+import LoginPage from "./components/LoginPage";
 import useTask from "./hooks/useTask";
 import useWebSocket from "./hooks/useWebSocket";
-import { saveSubtitle, API_BASE_URL } from "./api/client";
+import { saveSubtitle, API_BASE_URL, login, getToken, setToken, removeToken } from "./api/client";
 import type { SubtitleEntry, ProcessRequest } from "./types";
 
 function App() {
+  const [authenticated, setAuthenticated] = useState(!!getToken());
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [username, setUsername] = useState<string>("");
+
   const { taskId, status, loading, startTask, refreshStatus } = useTask();
   const { stage, progress, message } = useWebSocket(taskId);
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
@@ -30,6 +36,27 @@ function App() {
     }
   }, [status, taskId]);
 
+  const handleLogin = async (user: string, pass: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const result = await login(user, pass);
+      setToken(result.token);
+      setUsername(result.username);
+      setAuthenticated(true);
+    } catch (e: unknown) {
+      setAuthError(e instanceof Error ? e.message : "登录失败");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    removeToken();
+    setAuthenticated(false);
+    setUsername("");
+  };
+
   const handleSubmit = async (request: ProcessRequest) => {
     setSubtitles([]);
     setVideoUrl(null);
@@ -46,13 +73,26 @@ function App() {
     }
   };
 
+  if (!authenticated) {
+    return <LoginPage onLogin={handleLogin} error={authError} loading={authLoading} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">
             B站视频翻译字幕生成器
           </h1>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">{username}</span>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-gray-500 hover:text-red-600 transition"
+            >
+              退出登录
+            </button>
+          </div>
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
