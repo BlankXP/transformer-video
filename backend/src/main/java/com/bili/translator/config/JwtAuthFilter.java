@@ -31,17 +31,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String token = extractToken(request);
-        if (token == null) {
-            sendUnauthorized(response, "未登录或登录已过期");
+        if (token != null && JwtUtil.validateToken(token, appProperties.getJwtSecret())) {
+            filterChain.doFilter(request, response);
             return;
         }
 
-        if (!JwtUtil.validateToken(token, appProperties.getJwtSecret())) {
-            sendUnauthorized(response, "登录已过期，请重新登录");
+        if (isPublicAccess(path)) {
+            filterChain.doFilter(request, response);
             return;
         }
 
-        filterChain.doFilter(request, response);
+        sendUnauthorized(response, "未登录或登录已过期");
     }
 
     private String extractToken(HttpServletRequest request) {
@@ -68,5 +68,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         return path.startsWith("/api/auth/")
                 || path.startsWith("/ws/")
                 || path.equals("/error");
+    }
+
+    private boolean isPublicAccess(String path) {
+        return path.matches("/api/video/[^/]+/status")
+                || path.matches("/api/video/process");
     }
 }

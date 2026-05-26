@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ProcessRequest } from "../types";
 
 const LANGUAGES = [
@@ -14,13 +14,21 @@ const LANGUAGES = [
 interface Props {
   onSubmit: (request: ProcessRequest) => void;
   loading: boolean;
+  authenticated: boolean;
+  onLoginClick: () => void;
 }
 
-function VideoInput({ onSubmit, loading }: Props) {
+function VideoInput({ onSubmit, loading, authenticated, onLoginClick }: Props) {
   const [url, setUrl] = useState("");
   const [sourceLanguage, setSourceLanguage] = useState("zh");
   const [targetLanguage, setTargetLanguage] = useState("en");
   const [translateSubtitles, setTranslateSubtitles] = useState(true);
+
+  useEffect(() => {
+    if (!authenticated) {
+      setTranslateSubtitles(false);
+    }
+  }, [authenticated]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +37,7 @@ function VideoInput({ onSubmit, loading }: Props) {
       url: url.trim(),
       source_language: sourceLanguage,
       target_language: targetLanguage,
-      translate_subtitles: translateSubtitles,
+      translate_subtitles: authenticated && translateSubtitles,
     });
   };
 
@@ -53,7 +61,7 @@ function VideoInput({ onSubmit, loading }: Props) {
             value={sourceLanguage}
             onChange={(e) => setSourceLanguage(e.target.value)}
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-            disabled={loading}
+            disabled={loading || !authenticated || !translateSubtitles}
           >
             {LANGUAGES.map((l) => (
               <option key={l.value} value={l.value}>{l.label}</option>
@@ -66,7 +74,7 @@ function VideoInput({ onSubmit, loading }: Props) {
             value={targetLanguage}
             onChange={(e) => setTargetLanguage(e.target.value)}
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-            disabled={loading || !translateSubtitles}
+            disabled={loading || !authenticated || !translateSubtitles}
           >
             {LANGUAGES.map((l) => (
               <option key={l.value} value={l.value}>{l.label}</option>
@@ -75,25 +83,33 @@ function VideoInput({ onSubmit, loading }: Props) {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <label className="relative inline-flex items-center cursor-pointer">
+        <label className={`relative inline-flex items-center ${authenticated ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
           <input
             type="checkbox"
-            checked={translateSubtitles}
-            onChange={(e) => setTranslateSubtitles(e.target.checked)}
+            checked={authenticated && translateSubtitles}
+            onChange={(e) => {
+              if (authenticated) setTranslateSubtitles(e.target.checked);
+            }}
             className="sr-only peer"
-            disabled={loading}
+            disabled={loading || !authenticated}
           />
-          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          <span className="ms-3 text-sm font-medium text-gray-700">翻译字幕</span>
+          <div className={`w-11 h-6 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${authenticated ? 'peer-checked:bg-blue-600 peer-checked:after:translate-x-full' : 'bg-gray-200'} ${authenticated ? 'bg-gray-200 peer-checked:after:translate-x-full' : ''}`}></div>
+          <span className={`ms-3 text-sm font-medium ${authenticated ? 'text-gray-700' : 'text-gray-400'}`}>翻译字幕</span>
         </label>
-        <span className="text-xs text-gray-400">关闭则仅下载视频，不生成字幕</span>
+        {authenticated ? (
+          <span className="text-xs text-gray-400">关闭则仅下载视频，不生成字幕</span>
+        ) : (
+          <button type="button" onClick={onLoginClick} className="text-xs text-blue-600 hover:text-blue-700 transition">
+            登录后可使用翻译字幕功能
+          </button>
+        )}
       </div>
       <button
         type="submit"
         disabled={loading || !url.trim()}
         className="w-full py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
       >
-        {loading ? "处理中..." : "开始处理"}
+        {loading ? "处理中..." : (authenticated && translateSubtitles ? "开始处理" : "下载视频")}
       </button>
     </form>
   );
