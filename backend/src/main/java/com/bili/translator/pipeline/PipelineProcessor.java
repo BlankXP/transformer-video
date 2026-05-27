@@ -138,6 +138,15 @@ public class PipelineProcessor {
         return list;
     }
 
+    public TaskStatus findByUrl(String url) {
+        for (TaskStatus status : tasks.values()) {
+            if (status.getRequest() != null && url.equals(status.getRequest().getUrl())) {
+                return status;
+            }
+        }
+        return null;
+    }
+
     public void registerProgressCallback(String taskId, ProgressCallback callback) {
         progressCallbacks.put(taskId, callback);
     }

@@ -64,6 +64,14 @@ export async function listTasks(): Promise<TaskStatus[]> {
   return response.json();
 }
 
+export async function findTask(url: string): Promise<{ exists: boolean; task_id?: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/video/find?url=${encodeURIComponent(url)}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) return { exists: false };
+  return response.json();
+}
+
 export async function retryTask(taskId: string): Promise<{ task_id: string }> {
   const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/retry`, {
     method: 'POST',
