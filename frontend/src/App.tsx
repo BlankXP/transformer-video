@@ -34,7 +34,7 @@ function App() {
     if (status?.result) {
       setSubtitles(status.result.subtitles || []);
       if (status.result.video_path) {
-        setVideoUrl(`${API_BASE_URL}/videos/${taskId}/video.mp4`);
+        setVideoUrl(`${API_BASE_URL}/api/video/${taskId}/stream`);
       }
     } else {
       setSubtitles([]);
