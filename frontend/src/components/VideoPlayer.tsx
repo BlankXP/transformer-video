@@ -16,8 +16,11 @@ function VideoPlayer({ videoUrl }: Props) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
       <video
+        key={videoUrl}
         src={videoUrl}
         controls
+        playsInline
+        preload="metadata"
         className="w-full rounded-lg"
       />
     </div>
