@@ -5,6 +5,7 @@ import com.bili.translator.model.*;
 import com.bili.translator.service.*;
 import com.bili.translator.websocket.ProgressWebSocketHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -17,6 +18,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class PipelineProcessor {
@@ -27,7 +30,8 @@ public class PipelineProcessor {
 
     private final ConcurrentHashMap<String, TaskStatus> tasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ProgressCallback> progressCallbacks = new ConcurrentHashMap<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
     private final AppProperties appProperties;
     private final FileManager fileManager;
@@ -139,12 +143,37 @@ public class PipelineProcessor {
     }
 
     public TaskStatus findByUrl(String url) {
+        String normalized = normalizeUrl(url);
         for (TaskStatus status : tasks.values()) {
-            if (status.getRequest() != null && url.equals(status.getRequest().getUrl())) {
-                return status;
+            if (status.getRequest() != null) {
+                String existingNormalized = normalizeUrl(status.getRequest().getUrl());
+                if (normalized.equals(existingNormalized)) {
+                    return status;
+                }
             }
         }
         return null;
+    }
+
+    private String normalizeUrl(String url) {
+        if (url == null || url.isBlank()) return "";
+
+        Pattern bvPattern = Pattern.compile("(BV[a-zA-Z0-9]+)", Pattern.CASE_INSENSITIVE);
+        Matcher bvMatcher = bvPattern.matcher(url);
+        if (bvMatcher.find()) {
+            return bvMatcher.group(1).toUpperCase();
+        }
+
+        Pattern avPattern = Pattern.compile("av(\\d+)", Pattern.CASE_INSENSITIVE);
+        Matcher avMatcher = avPattern.matcher(url);
+        if (avMatcher.find()) {
+            return "AV" + avMatcher.group(1);
+        }
+
+        String normalized = url.split("[?]")[0];
+        normalized = normalized.replaceAll("/+$", "");
+        normalized = normalized.replaceFirst("^https?://(www\\.)?", "");
+        return normalized;
     }
 
     public void registerProgressCallback(String taskId, ProgressCallback callback) {

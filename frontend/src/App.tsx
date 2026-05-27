@@ -73,8 +73,8 @@ function App() {
         await selectTask(found.task_id);
         return;
       }
-    } catch {
-      void 0;
+    } catch (e) {
+      console.warn("findTask 查重请求失败，将由后端兜底查重:", e);
     }
 
     setSubtitles([]);
