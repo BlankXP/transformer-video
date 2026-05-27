@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -99,6 +100,50 @@ public class VideoController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(Map.of("message", "任务已删除"));
+    }
+
+    @GetMapping("/{taskId}/stream")
+    public ResponseEntity<Resource> streamVideo(@PathVariable String taskId, HttpServletRequest request) {
+        TaskResult result = processor.getTaskResult(taskId);
+        if (result == null || result.getVideoPath() == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Path videoPath = Path.of(result.getVideoPath());
+        if (!Files.exists(videoPath)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        long fileSize;
+        try {
+            fileSize = Files.size(videoPath);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
+
+        String rangeHeader = request.getHeader("Range");
+        Resource resource = new FileSystemResource(videoPath);
+
+        if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+            String[] ranges = rangeHeader.substring(6).split("-");
+            long start = Long.parseLong(ranges[0]);
+            long end = ranges.length > 1 && !ranges[1].isEmpty()
+                    ? Long.parseLong(ranges[1]) : fileSize - 1;
+            long contentLength = end - start + 1;
+
+            return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                    .header(HttpHeaders.CONTENT_TYPE, "video/mp4")
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize)
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .body(resource);
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "video/mp4")
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileSize))
+                .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                .body(resource);
     }
 
     @GetMapping("/{taskId}/burned")
