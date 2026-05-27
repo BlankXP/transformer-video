@@ -23,7 +23,11 @@ public class SubtitleBurner {
             "ffmpeg", "-y",
             "-i", videoPath.toString(),
             "-vf", filter,
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
             "-c:a", "copy",
+            "-movflags", "+faststart",
             outputPath.toString()
         );
         pb.redirectErrorStream(true);
