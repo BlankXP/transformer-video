@@ -8,7 +8,7 @@ import TaskHistoryPanel from "./components/TaskHistoryPanel";
 import LoginPage from "./components/LoginPage";
 import useTask from "./hooks/useTask";
 import useWebSocket from "./hooks/useWebSocket";
-import { saveSubtitle, API_BASE_URL, login, getToken, setToken, removeToken } from "./api/client";
+import { saveSubtitle, API_BASE_URL, login, getToken, setToken, removeToken, findTask } from "./api/client";
 import type { SubtitleEntry, ProcessRequest } from "./types";
 
 function App() {
@@ -66,6 +66,17 @@ function App() {
 
   const handleSubmit = async (request: ProcessRequest) => {
     setSelectedUrl(request.url);
+
+    try {
+      const found = await findTask(request.url);
+      if (found.exists && found.task_id) {
+        await selectTask(found.task_id);
+        return;
+      }
+    } catch {
+      void 0;
+    }
+
     setSubtitles([]);
     setVideoUrl(null);
     await startTask(request);

@@ -51,6 +51,15 @@ public class VideoController {
         return ResponseEntity.ok(processor.getAllTasks());
     }
 
+    @GetMapping("/find")
+    public ResponseEntity<?> findByUrl(@RequestParam String url) {
+        TaskStatus status = processor.findByUrl(url);
+        if (status == null) {
+            return ResponseEntity.ok(Map.of("exists", false));
+        }
+        return ResponseEntity.ok(Map.of("exists", true, "task_id", status.getTaskId(), "status", status));
+    }
+
     @PostMapping("/{taskId}/retry")
     public ResponseEntity<?> retryTask(@PathVariable String taskId, HttpServletRequest httpRequest) {
         TaskStatus status = processor.getTaskStatus(taskId);

@@ -78,6 +78,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private boolean isPublicAccess(String path) {
         return path.matches("/api/video/[^/]+/status")
                 || path.matches("/api/video/process")
-                || path.matches("/api/video/[^/]+/stream");
+                || path.matches("/api/video/[^/]+/stream")
+                || path.matches("/api/video/find");
     }
 }
