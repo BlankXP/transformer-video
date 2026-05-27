@@ -40,7 +40,7 @@ export async function login(username: string, password: string): Promise<{ token
   return response.json();
 }
 
-export async function submitTask(request: ProcessRequest): Promise<{ task_id: string }> {
+export async function submitTask(request: ProcessRequest): Promise<{ task_id: string; already_exists?: boolean }> {
   const response = await fetch(`${API_BASE_URL}/api/video/process`, {
     method: 'POST',
     headers: authHeaders(),
@@ -65,10 +65,18 @@ export async function listTasks(): Promise<TaskStatus[]> {
 }
 
 export async function findTask(url: string): Promise<{ exists: boolean; task_id?: string }> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const response = await fetch(`${API_BASE_URL}/api/video/find?url=${encodeURIComponent(url)}`, {
-    headers: authHeaders(),
+    headers,
   });
-  if (!response.ok) return { exists: false };
+  if (!response.ok) {
+    console.warn("findTask API 返回非200状态:", response.status);
+    return { exists: false };
+  }
   return response.json();
 }
 

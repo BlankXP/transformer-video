@@ -41,6 +41,11 @@ public class VideoController {
             }
         }
 
+        TaskStatus existingTask = processor.findByUrl(request.getUrl());
+        if (existingTask != null) {
+            return ResponseEntity.ok(Map.of("task_id", existingTask.getTaskId(), "already_exists", true));
+        }
+
         String taskId = processor.createTask(request);
         processor.process(taskId, request);
         return ResponseEntity.ok(Map.of("task_id", taskId));

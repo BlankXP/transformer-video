@@ -14,6 +14,14 @@ export default function useTask() {
     try {
       const result = await submitTask(request);
       setTaskId(result.task_id);
+      if (result.already_exists) {
+        try {
+          const s = await getTaskStatus(result.task_id);
+          setStatus(s);
+        } catch {
+          void 0;
+        }
+      }
       return result.task_id;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "任务提交失败");
