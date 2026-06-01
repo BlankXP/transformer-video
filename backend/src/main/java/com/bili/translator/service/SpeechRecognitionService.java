@@ -180,8 +180,8 @@ public class SpeechRecognitionService {
 
     private List<double[]> detectSilence(Path audioPath, double totalDuration) {
         List<double[]> silenceRanges = new ArrayList<>();
-        int silenceDurationMs = 2000;
-        double noiseDb = -30;
+        int silenceDurationMs = 30000;
+        double noiseDb = -50;
 
         try {
             ProcessBuilder pb = new ProcessBuilder(
