@@ -24,6 +24,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class SpeechRecognitionService {
@@ -38,9 +40,6 @@ public class SpeechRecognitionService {
         this.objectMapper = new ObjectMapper();
     }
 
-    /**
-     * 识别音频文件，根据时长自动选择单段识别或分段识别
-     */
     public List<RecognizedItem> recognize(Path audioPath, String language, BiConsumer<Float, String> progressCallback) throws Exception {
         double duration = getAudioDuration(audioPath);
         int segmentDuration = appProperties.getAudioSegmentDuration();
@@ -48,6 +47,10 @@ public class SpeechRecognitionService {
 
         if (duration <= segmentDuration) {
             log.info("音频时长未超过分段阈值，使用单段识别");
+            if (isEntirelySilent(audioPath, duration)) {
+                log.info("音频完全静音，跳过语音识别");
+                return Collections.emptyList();
+            }
             return recognizeSingle(audioPath, language);
         } else {
             log.info("音频时长超过分段阈值，使用分段识别");
@@ -55,9 +58,6 @@ public class SpeechRecognitionService {
         }
     }
 
-    /**
-     * 单段音频识别，带重试机制
-     */
     private List<RecognizedItem> recognizeSingle(Path audioPath, String language) throws Exception {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
@@ -77,25 +77,29 @@ public class SpeechRecognitionService {
         throw new RuntimeException("语音识别失败");
     }
 
-    /**
-     * 长音频分段识别，将音频按指定时长切割后逐段识别
-     */
     private List<RecognizedItem> recognizeLong(Path audioPath, String language, double duration, BiConsumer<Float, String> progressCallback) throws Exception {
+        List<AudioSegment> activeSegments = detectActiveSegments(audioPath, duration);
+        log.info("检测到{}个有声音片段", activeSegments.size());
+
+        if (activeSegments.isEmpty()) {
+            log.info("未检测到有声音片段，跳过语音识别");
+            return Collections.emptyList();
+        }
+
         List<RecognizedItem> allResults = new ArrayList<>();
-        int segmentDuration = appProperties.getAudioSegmentDuration();
-        int segments = (int) (duration / segmentDuration) + 1;
-        log.info("长音频分段识别: 共{}段", segments);
+        int totalSegments = activeSegments.size();
 
-        for (int i = 0; i < segments; i++) {
-            double start = i * segmentDuration;
+        for (int i = 0; i < totalSegments; i++) {
+            AudioSegment seg = activeSegments.get(i);
             Path segmentPath = audioPath.getParent().resolve("segment_" + i + ".wav");
-            log.debug("切割第{}段: start={}s, outputPath={}", i + 1, start, segmentPath);
+            log.debug("切割第{}个有声音片段: start={}s, end={}s, outputPath={}", i + 1, seg.start, seg.end, segmentPath);
 
+            double segDuration = seg.end - seg.start;
             ProcessBuilder pb = new ProcessBuilder(
                 "ffmpeg", "-y",
                 "-i", audioPath.toString(),
-                "-ss", String.valueOf(start),
-                "-t", String.valueOf(segmentDuration),
+                "-ss", String.valueOf(seg.start),
+                "-t", String.valueOf(segDuration),
                 "-ar", "16000", "-ac", "1",
                 segmentPath.toString()
             );
@@ -107,7 +111,7 @@ public class SpeechRecognitionService {
             process.waitFor();
 
             if (!Files.exists(segmentPath)) {
-                log.warn("第{}段音频切割后文件不存在，跳过", i + 1);
+                log.warn("第{}个有声音片段切割后文件不存在，跳过", i + 1);
                 continue;
             }
 
@@ -115,33 +119,128 @@ public class SpeechRecognitionService {
             try {
                 results = recognizeSingle(segmentPath, language);
             } catch (Exception e) {
-                log.warn("第{}段语音识别失败，跳过该段: {}", i + 1, e.getMessage());
+                log.warn("第{}个有声音片段语音识别失败，跳过: {}", i + 1, e.getMessage());
                 Files.deleteIfExists(segmentPath);
                 if (progressCallback != null) {
-                    progressCallback.accept((float)(i + 1) / segments, "第" + (i + 1) + "段识别失败已跳过 " + (i + 1) + "/" + segments);
+                    progressCallback.accept((float)(i + 1) / totalSegments, "第" + (i + 1) + "段识别失败已跳过 " + (i + 1) + "/" + totalSegments);
                 }
                 continue;
             }
             for (RecognizedItem item : results) {
-                item.setStartTime(item.getStartTime() + start);
-                item.setEndTime(item.getEndTime() + start);
+                item.setStartTime(item.getStartTime() + seg.start);
+                item.setEndTime(item.getEndTime() + seg.start);
             }
             allResults.addAll(results);
             Files.deleteIfExists(segmentPath);
-            log.info("第{}/{}段识别完成, 识别到{}条句子", i + 1, segments, results.size());
+            log.info("第{}/{}个有声音片段识别完成, 识别到{}条句子", i + 1, totalSegments, results.size());
 
             if (progressCallback != null) {
-                progressCallback.accept((float)(i + 1) / segments, "识别进度 " + (i + 1) + "/" + segments);
+                progressCallback.accept((float)(i + 1) / totalSegments, "识别进度 " + (i + 1) + "/" + totalSegments);
             }
         }
 
-        log.info("长音频分段识别全部完成, 共识别到{}条句子", allResults.size());
+        log.info("有声音片段识别全部完成, 共识别到{}条句子", allResults.size());
         return allResults;
     }
 
-    /**
-     * 调用DashScope SDK流式回调接口进行语音识别，通过回调获取带真实时间戳的句子级结果
-     */
+    private List<AudioSegment> detectActiveSegments(Path audioPath, double totalDuration) {
+        List<double[]> silenceRanges = detectSilence(audioPath, totalDuration);
+        if (silenceRanges.isEmpty()) {
+            List<AudioSegment> segments = new ArrayList<>();
+            segments.add(new AudioSegment(0, totalDuration));
+            return segments;
+        }
+
+        List<AudioSegment> activeSegments = new ArrayList<>();
+        double prevEnd = 0;
+
+        for (double[] silence : silenceRanges) {
+            double silenceStart = silence[0];
+            double silenceEnd = silence[1];
+
+            if (silenceStart > prevEnd + 0.5) {
+                activeSegments.add(new AudioSegment(prevEnd, silenceStart));
+            }
+            prevEnd = silenceEnd;
+        }
+
+        if (prevEnd < totalDuration - 0.5) {
+            activeSegments.add(new AudioSegment(prevEnd, totalDuration));
+        }
+
+        for (AudioSegment seg : activeSegments) {
+            log.info("有声音片段: start={}s, end={}s, duration={}s",
+                String.format("%.2f", seg.start),
+                String.format("%.2f", seg.end),
+                String.format("%.2f", seg.end - seg.start));
+        }
+
+        return activeSegments;
+    }
+
+    private List<double[]> detectSilence(Path audioPath, double totalDuration) {
+        List<double[]> silenceRanges = new ArrayList<>();
+        int silenceDurationMs = 2000;
+        double noiseDb = -30;
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                "ffmpeg", "-i", audioPath.toString(),
+                "-af", "silencedetect=noise=" + noiseDb + "dB:d=" + (silenceDurationMs / 1000.0),
+                "-f", "null", "-"
+            );
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            List<Double> silenceStarts = new ArrayList<>();
+            List<Double> silenceEnds = new ArrayList<>();
+
+            Pattern startPattern = Pattern.compile("silence_start:\\s*(\\d+\\.?\\d*)");
+            Pattern endPattern = Pattern.compile("silence_end:\\s*(\\d+\\.?\\d*)");
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    Matcher startMatcher = startPattern.matcher(line);
+                    if (startMatcher.find()) {
+                        silenceStarts.add(Double.parseDouble(startMatcher.group(1)));
+                    }
+                    Matcher endMatcher = endPattern.matcher(line);
+                    if (endMatcher.find()) {
+                        silenceEnds.add(Double.parseDouble(endMatcher.group(1)));
+                    }
+                }
+            }
+            process.waitFor();
+
+            for (int i = 0; i < silenceStarts.size(); i++) {
+                double start = silenceStarts.get(i);
+                double end = (i < silenceEnds.size()) ? silenceEnds.get(i) : totalDuration;
+                silenceRanges.add(new double[]{start, end});
+                log.debug("静音区间: start={}s, end={}s", String.format("%.2f", start), String.format("%.2f", end));
+            }
+
+            log.info("检测到{}个静音区间", silenceRanges.size());
+        } catch (Exception e) {
+            log.warn("静音检测失败，将按完整音频处理: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+
+        return silenceRanges;
+    }
+
+    private boolean isEntirelySilent(Path audioPath, double totalDuration) {
+        List<double[]> silenceRanges = detectSilence(audioPath, totalDuration);
+        if (silenceRanges.isEmpty()) {
+            return false;
+        }
+        double totalSilence = 0;
+        for (double[] range : silenceRanges) {
+            totalSilence += range[1] - range[0];
+        }
+        return totalSilence >= totalDuration * 0.95;
+    }
+
     private List<RecognizedItem> callRecognitionApi(Path audioPath, String language) throws Exception {
         Recognition recognizer = new Recognition();
         List<RecognizedItem> results = Collections.synchronizedList(new ArrayList<>());
@@ -216,9 +315,6 @@ public class SpeechRecognitionService {
         }
     }
 
-    /**
-     * 使用ffprobe获取音频文件时长
-     */
     private double getAudioDuration(Path audioPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
             "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", audioPath.toString()
@@ -235,6 +331,16 @@ public class SpeechRecognitionService {
         double duration = root.path("format").path("duration").asDouble();
         log.debug("获取音频时长: path={}, duration={}s", audioPath, duration);
         return duration;
+    }
+
+    private static class AudioSegment {
+        final double start;
+        final double end;
+
+        AudioSegment(double start, double end) {
+            this.start = start;
+            this.end = end;
+        }
     }
 
     public static class RecognizedItem {
