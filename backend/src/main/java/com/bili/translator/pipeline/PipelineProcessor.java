@@ -270,7 +270,7 @@ public class PipelineProcessor {
 
             if (!completed.contains("recognizing")) {
                 notifyProgress(taskId, "recognizing", 0.30f, "开始语音识别");
-                recognized = speechRecognitionService.recognize(audioPath, request.getSourceLanguage(),
+                recognized = speechRecognitionService.recognize(audioPath,
                     (p, m) -> notifyProgress(taskId, "recognizing", 0.30f + p * 0.35f, m));
                 notifyProgress(taskId, "recognizing", 0.65f, "语音识别完成");
 
@@ -293,7 +293,7 @@ public class PipelineProcessor {
 
                 notifyProgress(taskId, "translating", 0.65f, "开始翻译字幕");
                 List<TranslatorService.TranslatedItem> translated =
-                    translatorService.translate(recognized, request.getSourceLanguage(), request.getTargetLanguage(),
+                    translatorService.translate(recognized, request.getTargetLanguage(),
                         (p, m) -> notifyProgress(taskId, "translating", 0.65f + p * 0.20f, m));
                 notifyProgress(taskId, "translating", 0.85f, "字幕翻译完成");
 
