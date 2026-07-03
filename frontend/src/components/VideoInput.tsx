@@ -21,7 +21,6 @@ interface Props {
 
 function VideoInput({ onSubmit, loading, authenticated, onLoginClick, initialUrl }: Props) {
   const [url, setUrl] = useState("");
-  const [sourceLanguage, setSourceLanguage] = useState("zh");
   const [targetLanguage, setTargetLanguage] = useState("en");
   const [translateSubtitles, setTranslateSubtitles] = useState(true);
 
@@ -42,7 +41,6 @@ function VideoInput({ onSubmit, loading, authenticated, onLoginClick, initialUrl
     if (!url.trim()) return;
     onSubmit({
       url: url.trim(),
-      source_language: sourceLanguage,
       target_language: targetLanguage,
       translate_subtitles: authenticated && translateSubtitles,
     });
@@ -63,20 +61,7 @@ function VideoInput({ onSubmit, loading, authenticated, onLoginClick, initialUrl
       </div>
       <div className="flex gap-4">
         <div className="flex-1">
-          <label className="block text-sm font-medium text-gray-700 mb-1">源语言</label>
-          <select
-            value={sourceLanguage}
-            onChange={(e) => setSourceLanguage(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-            disabled={loading || !authenticated || !translateSubtitles}
-          >
-            {LANGUAGES.map((l) => (
-              <option key={l.value} value={l.value}>{l.label}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex-1">
-          <label className="block text-sm font-medium text-gray-700 mb-1">目标语言</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">翻译为目标语言</label>
           <select
             value={targetLanguage}
             onChange={(e) => setTargetLanguage(e.target.value)}

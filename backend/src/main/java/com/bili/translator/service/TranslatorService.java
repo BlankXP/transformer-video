@@ -51,7 +51,7 @@ public class TranslatorService {
      * 批量翻译字幕，将字幕按批次发送给大模型进行翻译
      */
     public List<TranslatedItem> translate(List<SpeechRecognitionService.RecognizedItem> subtitles,
-                                           String sourceLanguage, String targetLanguage,
+                                           String targetLanguage,
                                            BiConsumer<Float, String> progressCallback) throws Exception {
         List<Integer> nonEmptyIndices = new ArrayList<>();
         List<SpeechRecognitionService.RecognizedItem> nonEmptyItems = new ArrayList<>();
@@ -82,7 +82,7 @@ public class TranslatorService {
         }
 
         int totalBatches = (nonEmptyItems.size() + BATCH_SIZE - 1) / BATCH_SIZE;
-        log.info("开始翻译字幕: 共{}条(非空), 分{}批, {}→{}", nonEmptyItems.size(), totalBatches, sourceLanguage, targetLanguage);
+        log.info("开始翻译字幕: 共{}条(非空), 分{}批, 自动检测→{}", nonEmptyItems.size(), totalBatches, targetLanguage);
 
         for (int i = 0; i < nonEmptyItems.size(); i += BATCH_SIZE) {
             int end = Math.min(i + BATCH_SIZE, nonEmptyItems.size());
@@ -91,10 +91,10 @@ public class TranslatorService {
 
             List<String> translatedTexts;
             try {
-                translatedTexts = translateBatch(batch, sourceLanguage, targetLanguage);
+                translatedTexts = translateBatch(batch, targetLanguage);
             } catch (Exception e) {
                 log.warn("第{}批翻译失败，尝试拆分为更小批次重试: {}", batchNum, e.getMessage());
-                translatedTexts = translateWithSubBatches(batch, sourceLanguage, targetLanguage, batchNum);
+                translatedTexts = translateWithSubBatches(batch, targetLanguage, batchNum);
             }
 
             for (int j = 0; j < batch.size(); j++) {
@@ -126,15 +126,15 @@ public class TranslatorService {
      * 翻译一批字幕，将字幕编号后拼接为提示词发送给模型
      */
     private List<String> translateBatch(List<SpeechRecognitionService.RecognizedItem> batch,
-                                         String sourceLanguage, String targetLanguage) throws Exception {
+                                         String targetLanguage) throws Exception {
         StringBuilder numberedText = new StringBuilder();
         for (int i = 0; i < batch.size(); i++) {
             numberedText.append("[").append(i + 1).append("] ").append(batch.get(i).getText()).append("\n");
         }
 
         String prompt = String.format(
-            "请将以下字幕文本从%s翻译为%s，保持原文的语义和语气。每行一个字幕，保持编号格式（[编号] 翻译内容），严格一一对应，不要添加额外解释：\n\n%s",
-            sourceLanguage, targetLanguage, numberedText.toString()
+            "请将以下字幕文本翻译为%s，自动识别源语言（可能包含多种语言），保持原文的语义和语气。每行一个字幕，保持编号格式（[编号] 翻译内容），严格一一对应，不要添加额外解释：\n\n%s",
+            targetLanguage, numberedText.toString()
         );
 
         for (int attempt = 0; attempt < 3; attempt++) {
@@ -156,7 +156,7 @@ public class TranslatorService {
     }
 
     private List<String> translateWithSubBatches(List<SpeechRecognitionService.RecognizedItem> batch,
-                                                   String sourceLanguage, String targetLanguage, int batchNum) {
+                                                   String targetLanguage, int batchNum) {
         List<String> allTranslated = new ArrayList<>();
         int subSize = Math.max(1, batch.size() / 2);
 
@@ -164,7 +164,7 @@ public class TranslatorService {
             log.warn("第{}批已无法继续拆分(每批仅{}条)，尝试OpenRouter回退翻译", batchNum, batch.size());
             for (SpeechRecognitionService.RecognizedItem item : batch) {
                 try {
-                    String translated = translateSingleViaOpenRouter(item.getText(), sourceLanguage, targetLanguage);
+                    String translated = translateSingleViaOpenRouter(item.getText(), targetLanguage);
                     allTranslated.add(translated);
                 } catch (Exception e) {
                     log.warn("OpenRouter回退翻译也失败，该条翻译结果置空: {}", e.getMessage());
@@ -180,12 +180,12 @@ public class TranslatorService {
             int end = Math.min(i + subSize, batch.size());
             List<SpeechRecognitionService.RecognizedItem> subBatch = batch.subList(i, end);
             try {
-                List<String> subResult = translateBatch(subBatch, sourceLanguage, targetLanguage);
+                List<String> subResult = translateBatch(subBatch, targetLanguage);
                 allTranslated.addAll(subResult);
                 log.info("第{}批子批{}/{}重试成功, {}条", batchNum, (i / subSize) + 1, (batch.size() + subSize - 1) / subSize, subBatch.size());
             } catch (Exception e) {
                 log.warn("第{}批子批翻译失败，递归拆分重试: {}", batchNum, e.getMessage());
-                List<String> deeperResult = translateWithSubBatches(subBatch, sourceLanguage, targetLanguage, batchNum * 100 + i);
+                List<String> deeperResult = translateWithSubBatches(subBatch, targetLanguage, batchNum * 100 + i);
                 allTranslated.addAll(deeperResult);
             }
         }
@@ -196,15 +196,15 @@ public class TranslatorService {
     /**
      * 通过OpenRouter API翻译单条文本（作为DashScope翻译失败的回退方案）
      */
-    private String translateSingleViaOpenRouter(String text, String sourceLanguage, String targetLanguage) throws Exception {
+    private String translateSingleViaOpenRouter(String text, String targetLanguage) throws Exception {
         String apiKey = appProperties.getOpenrouterApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             throw new RuntimeException("OpenRouter API Key未配置");
         }
 
         String prompt = String.format(
-            "请将以下文本从%s翻译为%s，只输出翻译结果，不要添加任何解释：\n\n%s",
-            sourceLanguage, targetLanguage, text
+            "请将以下文本翻译为%s（自动识别源语言），只输出翻译结果，不要添加任何解释：\n\n%s",
+            targetLanguage, text
         );
 
         ObjectNode requestBody = objectMapper.createObjectNode();

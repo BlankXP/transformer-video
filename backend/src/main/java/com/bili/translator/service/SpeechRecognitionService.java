@@ -40,10 +40,10 @@ public class SpeechRecognitionService {
         this.objectMapper = new ObjectMapper();
     }
 
-    public List<RecognizedItem> recognize(Path audioPath, String language, BiConsumer<Float, String> progressCallback) throws Exception {
+    public List<RecognizedItem> recognize(Path audioPath, BiConsumer<Float, String> progressCallback) throws Exception {
         double duration = getAudioDuration(audioPath);
         int segmentDuration = appProperties.getAudioSegmentDuration();
-        log.info("开始语音识别: audioPath={}, language={}, duration={}s, segmentDuration={}s", audioPath, language, duration, segmentDuration);
+        log.info("开始语音识别: audioPath={}, duration={}s, segmentDuration={}s", audioPath, duration, segmentDuration);
 
         if (duration <= segmentDuration) {
             log.info("音频时长未超过分段阈值，使用单段识别");
@@ -51,17 +51,17 @@ public class SpeechRecognitionService {
                 log.info("音频完全静音，跳过语音识别");
                 return Collections.emptyList();
             }
-            return recognizeSingle(audioPath, language);
+            return recognizeSingle(audioPath);
         } else {
             log.info("音频时长超过分段阈值，使用分段识别");
-            return recognizeLong(audioPath, language, duration, progressCallback);
+            return recognizeLong(audioPath, duration, progressCallback);
         }
     }
 
-    private List<RecognizedItem> recognizeSingle(Path audioPath, String language) throws Exception {
+    private List<RecognizedItem> recognizeSingle(Path audioPath) throws Exception {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                return callRecognitionApi(audioPath, language);
+                return callRecognitionApi(audioPath);
             } catch (Exception e) {
                 log.warn("语音识别第{}次尝试失败: {}", attempt + 1, e.getMessage());
                 if (attempt < 2) {
@@ -77,7 +77,7 @@ public class SpeechRecognitionService {
         throw new RuntimeException("语音识别失败");
     }
 
-    private List<RecognizedItem> recognizeLong(Path audioPath, String language, double duration, BiConsumer<Float, String> progressCallback) throws Exception {
+    private List<RecognizedItem> recognizeLong(Path audioPath, double duration, BiConsumer<Float, String> progressCallback) throws Exception {
         List<AudioSegment> activeSegments = detectActiveSegments(audioPath, duration);
         log.info("检测到{}个有声音片段", activeSegments.size());
 
@@ -117,7 +117,7 @@ public class SpeechRecognitionService {
 
             List<RecognizedItem> results;
             try {
-                results = recognizeSingle(segmentPath, language);
+                results = recognizeSingle(segmentPath);
             } catch (Exception e) {
                 log.warn("第{}个有声音片段语音识别失败，跳过: {}", i + 1, e.getMessage());
                 Files.deleteIfExists(segmentPath);
@@ -241,7 +241,7 @@ public class SpeechRecognitionService {
         return totalSilence >= totalDuration * 0.95;
     }
 
-    private List<RecognizedItem> callRecognitionApi(Path audioPath, String language) throws Exception {
+    private List<RecognizedItem> callRecognitionApi(Path audioPath) throws Exception {
         Recognition recognizer = new Recognition();
         List<RecognizedItem> results = Collections.synchronizedList(new ArrayList<>());
         CountDownLatch latch = new CountDownLatch(1);
@@ -252,10 +252,9 @@ public class SpeechRecognitionService {
             .model(appProperties.getAsrModel())
             .format("wav")
             .sampleRate(16000)
-            .parameter("language_hints", new String[]{language})
             .build();
 
-        log.debug("调用语音识别API(流式回调): model={}, language={}, file={}", appProperties.getAsrModel(), language, audioPath);
+        log.debug("调用语音识别API(流式回调, 自动检测语言): model={}, file={}", appProperties.getAsrModel(), audioPath);
 
         ResultCallback<RecognitionResult> callback = new ResultCallback<RecognitionResult>() {
             @Override
