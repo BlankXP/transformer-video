@@ -137,17 +137,17 @@ public class TranslatorService {
             targetLanguage, numberedText.toString()
         );
 
-        for (int attempt = 0; attempt < 1; attempt++) {
+        for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 return callQwenApi(prompt, batch.size());
             } catch (Exception e) {
                 log.warn("翻译第{}次尝试失败: {}", attempt + 1, e.getMessage());
-                if (attempt < 0) {
+                if (attempt < 2) {
                     long delay = (long) Math.pow(2, attempt) * 1000;
                     log.info("等待{}ms后重试...", delay);
                     Thread.sleep(delay);
                 } else {
-                    log.error("翻译1次尝试均失败", e);
+                    log.error("翻译3次尝试均失败", e);
                     throw e;
                 }
             }
