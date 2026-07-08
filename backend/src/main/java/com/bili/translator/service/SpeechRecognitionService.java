@@ -86,27 +86,13 @@ public class SpeechRecognitionService {
             return Collections.emptyList();
         }
 
-        List<AudioSegment> segments = new ArrayList<>();
-        int segmentDuration = appProperties.getAudioSegmentDuration();
-        for (AudioSegment seg : activeSegments) {
-            if (seg.end - seg.start > segmentDuration) {
-                for (double s = seg.start; s < seg.end; s += segmentDuration) {
-                    double e = Math.min(s + segmentDuration, seg.end);
-                    segments.add(new AudioSegment(s, e));
-                }
-            } else {
-                segments.add(seg);
-            }
-        }
-        log.info("最终分段数: {} (单段上限{}秒)", segments.size(), segmentDuration);
-
         List<RecognizedItem> allResults = new ArrayList<>();
-        int totalSegments = segments.size();
+        int totalSegments = activeSegments.size();
 
         for (int i = 0; i < totalSegments; i++) {
-            AudioSegment seg = segments.get(i);
+            AudioSegment seg = activeSegments.get(i);
             Path segmentPath = audioPath.getParent().resolve("segment_" + i + ".wav");
-            log.debug("切割第{}段: start={}s, end={}s, outputPath={}", i + 1, seg.start, seg.end, segmentPath);
+            log.debug("切割第{}个有声音片段: start={}s, end={}s, outputPath={}", i + 1, seg.start, seg.end, segmentPath);
 
             double segDuration = seg.end - seg.start;
             ProcessBuilder pb = new ProcessBuilder(
@@ -125,7 +111,7 @@ public class SpeechRecognitionService {
             process.waitFor();
 
             if (!Files.exists(segmentPath)) {
-                log.warn("第{}段切割后文件不存在，跳过", i + 1);
+                log.warn("第{}个有声音片段切割后文件不存在，跳过", i + 1);
                 continue;
             }
 
@@ -133,7 +119,7 @@ public class SpeechRecognitionService {
             try {
                 results = recognizeSingle(segmentPath);
             } catch (Exception e) {
-                log.warn("第{}段语音识别失败，跳过: {}", i + 1, e.getMessage());
+                log.warn("第{}个有声音片段语音识别失败，跳过: {}", i + 1, e.getMessage());
                 Files.deleteIfExists(segmentPath);
                 if (progressCallback != null) {
                     progressCallback.accept((float)(i + 1) / totalSegments, "第" + (i + 1) + "段识别失败已跳过 " + (i + 1) + "/" + totalSegments);
@@ -146,14 +132,14 @@ public class SpeechRecognitionService {
             }
             allResults.addAll(results);
             Files.deleteIfExists(segmentPath);
-            log.info("第{}/{}段识别完成, 识别到{}条句子", i + 1, totalSegments, results.size());
+            log.info("第{}/{}个有声音片段识别完成, 识别到{}条句子", i + 1, totalSegments, results.size());
 
             if (progressCallback != null) {
                 progressCallback.accept((float)(i + 1) / totalSegments, "识别进度 " + (i + 1) + "/" + totalSegments);
             }
         }
 
-        log.info("分段识别全部完成, 共识别到{}条句子", allResults.size());
+        log.info("有声音片段识别全部完成, 共识别到{}条句子", allResults.size());
         return allResults;
     }
 
