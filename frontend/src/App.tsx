@@ -130,7 +130,7 @@ function App() {
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">
-            B站视频翻译字幕生成器
+            B站/YouTube 视频翻译字幕生成器
           </h1>
           <div className="flex items-center gap-3">
             {authenticated ? (

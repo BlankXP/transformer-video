@@ -19,7 +19,7 @@ function LoginPage({ onLogin, error, loading }: Props) {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">B站视频翻译字幕生成器</h1>
+          <h1 className="text-2xl font-bold text-gray-900">B站/YouTube 视频翻译字幕生成器</h1>
           <p className="text-sm text-gray-500 mt-2">请登录以继续使用</p>
         </div>
         <form
