@@ -10,6 +10,12 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // WebSocket 代理,与后端 /ws/{taskId} 端点对应
+      '/ws': {
+        target: 'http://localhost:8000',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 })

@@ -17,7 +17,9 @@ export default function useWebSocket(taskId: string | null) {
   useEffect(() => {
     if (!taskId) return;
 
-    const wsUrl = `ws://${window.location.hostname}:8000/ws/${taskId}`;
+    // 同源 WebSocket:生产走 Nginx /ws 反代,开发走 Vite proxy;https 站点自动使用 wss
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws/${taskId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
