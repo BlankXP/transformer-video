@@ -1,11 +1,19 @@
 package com.bili.translator.config;
 
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+
+import java.security.SecureRandom;
+import java.util.Base64;
 
 @Component
 @ConfigurationProperties(prefix = "app")
 public class AppProperties {
+
+    private static final Logger log = LoggerFactory.getLogger(AppProperties.class);
 
     private String dashscopeApiKey;
     private String openrouterApiKey;
@@ -16,9 +24,33 @@ public class AppProperties {
     private String asrModel = "paraformer-realtime-v2";
     private String translationModel = "qwen-plus";
     private String authUsername = "admin";
-    private String authPassword = "admin123";
-    private String jwtSecret = "bili-translator-default-jwt-secret-key-2024";
+    private String authPassword;
+    private String jwtSecret;
     private long jwtExpiration = 86400000;
+
+    /**
+     * 启动时兜底生成安全凭据,避免代码内置弱默认值:
+     * - JWT 密钥未配置:生成随机密钥(重启后已签发 Token 失效,属预期行为)
+     * - 登录密码未配置:生成随机密码并打印到日志,提示用户尽快配置固定密码
+     */
+    @PostConstruct
+    void initSecurityDefaults() {
+        SecureRandom random = new SecureRandom();
+
+        if (jwtSecret == null || jwtSecret.isBlank()) {
+            byte[] bytes = new byte[48];
+            random.nextBytes(bytes);
+            this.jwtSecret = Base64.getEncoder().encodeToString(bytes);
+            log.warn("未配置 JWT_SECRET,已生成随机密钥(重启后已签发的 Token 将全部失效)");
+        }
+
+        if (authPassword == null || authPassword.isBlank()) {
+            byte[] bytes = new byte[9];
+            random.nextBytes(bytes);
+            this.authPassword = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+            log.warn("未配置 AUTH_PASSWORD,本次启动使用随机密码: {} (请尽快在 .env 中配置固定密码)", authPassword);
+        }
+    }
 
     public String getDashscopeApiKey() {
         return dashscopeApiKey;

@@ -94,7 +94,7 @@ mvn spring-boot:run           # 默认端口 8000
 ```bash
 cd frontend
 npm install
-npm run dev                   # 默认代理 /api 到 http://192.168.150.128:8000
+npm run dev                   # 默认代理 /api、/ws 到 http://localhost:8000
 ```
 
 代理目标在 `frontend/vite.config.ts` 中修改;也可通过 `VITE_API_BASE_URL` 环境变量直连后端地址。
@@ -110,7 +110,9 @@ cp backend/.env.example backend/.env
 docker compose up -d --build
 ```
 
-启动后访问 `http://<服务器IP>/`,默认账号 `admin / admin123`(通过 `AUTH_USERNAME` / `AUTH_PASSWORD` 修改)。
+启动后访问 `http://<服务器IP>/`,默认用户名 `admin`。
+
+> **密码说明**:出于安全考虑,代码不内置默认密码。未配置 `AUTH_PASSWORD` 时,后端每次启动会生成随机密码并打印到日志(提示 `未配置 AUTH_PASSWORD,本次启动使用随机密码: ...`),建议在 `backend/.env` 中配置固定密码;`JWT_SECRET` 未配置时同样会生成随机密钥(重启后已登录用户需重新登录)。
 
 > **CentOS 7 注意**:老内核(3.10)上 Docker 默认 seccomp 配置会阻止新版 nginx 写 PID 文件,导致前端容器反复重启。若遇到此问题,在 compose 的 `frontend` 服务中添加:
 >
@@ -132,6 +134,6 @@ docker compose up -d --build
 | `ASR_MODEL` | `paraformer-realtime-v2` | 语音识别模型 |
 | `TRANSLATION_MODEL` | `qwen-plus` | 翻译模型 |
 | `AUTH_USERNAME` | `admin` | 登录用户名 |
-| `AUTH_PASSWORD` | `admin123` | 登录密码 |
-| `JWT_SECRET` | (内置默认值) | JWT 签名密钥,生产环境务必修改 |
+| `AUTH_PASSWORD` | (随机生成) | 登录密码,未配置时每次启动随机生成并打印到日志 |
+| `JWT_SECRET` | (随机生成) | JWT 签名密钥,未配置时每次启动随机生成 |
 | `JWT_EXPIRATION` | `86400000` | Token 有效期(毫秒) |

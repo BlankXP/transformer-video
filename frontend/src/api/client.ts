@@ -1,6 +1,7 @@
 import type { ProcessRequest, TaskStatus, SubtitleEntry } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://192.168.150.128:8000';
+// 默认使用同源相对路径(生产走 Nginx 反代,开发走 Vite proxy);可用 VITE_API_BASE_URL 直连后端
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export { API_BASE_URL };
 

@@ -15,6 +15,7 @@ app:
   asr-model: ${ASR_MODEL:paraformer-realtime-v2}
   translation-model: ${TRANSLATION_MODEL:qwen-plus}
   auth-username: ${AUTH_USERNAME:admin}
-  auth-password: ${AUTH_PASSWORD:admin123}
-  jwt-secret: ${JWT_SECRET:bili-translator-default-jwt-secret-key-2024}
+  # 密码与 JWT 密钥留空时,启动时会生成随机值(见 AppProperties#initSecurityDefaults)
+  auth-password: ${AUTH_PASSWORD:}
+  jwt-secret: ${JWT_SECRET:}
   jwt-expiration: ${JWT_EXPIRATION:86400000}
