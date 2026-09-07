@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# transformer-video
-=======
 # BiliTranslator — B站/YouTube 视频翻译字幕生成器
 
 输入B站或 YouTube 视频链接,自动完成下载、语音识别、翻译、字幕生成与烧录的 Web 应用。
