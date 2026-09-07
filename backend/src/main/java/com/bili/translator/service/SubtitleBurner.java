@@ -23,15 +23,11 @@ public class SubtitleBurner {
             "ffmpeg", "-y",
             "-i", videoPath.toString(),
             "-vf", filter,
-<<<<<<< HEAD
-            "-c:a", "copy",
-=======
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "23",
             "-c:a", "copy",
             "-movflags", "+faststart",
->>>>>>> trae/solo-agent-DQFIa2
             outputPath.toString()
         );
         pb.redirectErrorStream(true);

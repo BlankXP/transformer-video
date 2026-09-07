@@ -4,46 +4,27 @@ import com.bili.translator.config.AppProperties;
 import com.bili.translator.model.*;
 import com.bili.translator.service.*;
 import com.bili.translator.websocket.ProgressWebSocketHandler;
-<<<<<<< HEAD
-=======
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
->>>>>>> trae/solo-agent-DQFIa2
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-<<<<<<< HEAD
-=======
 import jakarta.annotation.PostConstruct;
->>>>>>> trae/solo-agent-DQFIa2
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-<<<<<<< HEAD
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-=======
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
->>>>>>> trae/solo-agent-DQFIa2
 
 @Service
 public class PipelineProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineProcessor.class);
-<<<<<<< HEAD
-
-    private final ConcurrentHashMap<String, TaskStatus> tasks = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, TaskResult> results = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, ProgressCallback> progressCallbacks = new ConcurrentHashMap<>();
-=======
     private static final String COMPLETED_STEPS_SEP = ",";
     private static final String META_FILE = "task_meta.json";
 
@@ -51,7 +32,6 @@ public class PipelineProcessor {
     private final ConcurrentHashMap<String, ProgressCallback> progressCallbacks = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper()
             .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
->>>>>>> trae/solo-agent-DQFIa2
 
     private final AppProperties appProperties;
     private final FileManager fileManager;
@@ -81,8 +61,6 @@ public class PipelineProcessor {
         this.webSocketHandler = webSocketHandler;
     }
 
-<<<<<<< HEAD
-=======
     @PostConstruct
     public void init() {
         loadPersistedTasks();
@@ -135,7 +113,6 @@ public class PipelineProcessor {
         }
     }
 
->>>>>>> trae/solo-agent-DQFIa2
     public String createTask(ProcessRequest request) {
         String taskId = UUID.randomUUID().toString().substring(0, 8);
         TaskStatus status = new TaskStatus();
@@ -143,14 +120,10 @@ public class PipelineProcessor {
         status.setStage("downloading");
         status.setProgress(0.0);
         status.setMessage("任务已创建");
-<<<<<<< HEAD
-        tasks.put(taskId, status);
-=======
         status.setRequest(request);
         status.setCreatedAt(System.currentTimeMillis());
         tasks.put(taskId, status);
         persistTask(taskId);
->>>>>>> trae/solo-agent-DQFIa2
         return taskId;
     }
 
@@ -159,9 +132,6 @@ public class PipelineProcessor {
     }
 
     public TaskResult getTaskResult(String taskId) {
-<<<<<<< HEAD
-        return results.get(taskId);
-=======
         TaskStatus status = tasks.get(taskId);
         return status != null ? status.getResult() : null;
     }
@@ -204,7 +174,6 @@ public class PipelineProcessor {
         normalized = normalized.replaceAll("/+$", "");
         normalized = normalized.replaceFirst("^https?://(www\\.)?", "");
         return normalized;
->>>>>>> trae/solo-agent-DQFIa2
     }
 
     public void registerProgressCallback(String taskId, ProgressCallback callback) {
@@ -233,54 +202,6 @@ public class PipelineProcessor {
         webSocketHandler.sendProgress(taskId, stage, progress, message);
     }
 
-<<<<<<< HEAD
-    @Async
-    public void process(String taskId, ProcessRequest request) {
-        try {
-            Path taskDir = fileManager.createTaskDir(taskId);
-            Path videoPath = taskDir.resolve("video.mp4");
-            Path audioPath = taskDir.resolve("audio.wav");
-
-            notifyProgress(taskId, "downloading", 0.0f, "开始下载视频");
-            Path downloadedPath = videoDownloader.download(request.getUrl(), taskDir,
-                (p, m) -> notifyProgress(taskId, "downloading", 0.0f + p * 0.25f, m));
-            if (!downloadedPath.equals(videoPath)) {
-                Files.move(downloadedPath, videoPath, StandardCopyOption.REPLACE_EXISTING);
-            }
-            notifyProgress(taskId, "downloading", 0.25f, "视频下载完成");
-
-            notifyProgress(taskId, "extracting_audio", 0.25f, "开始提取音频");
-            audioExtractor.extract(videoPath, audioPath);
-            notifyProgress(taskId, "extracting_audio", 0.30f, "音频提取完成");
-
-            notifyProgress(taskId, "recognizing", 0.30f, "开始语音识别");
-            List<SpeechRecognitionService.RecognizedItem> recognized =
-                speechRecognitionService.recognize(audioPath, request.getSourceLanguage(),
-                    (p, m) -> notifyProgress(taskId, "recognizing", 0.30f + p * 0.35f, m));
-            notifyProgress(taskId, "recognizing", 0.65f, "语音识别完成");
-
-            Path recognizedTextPath = taskDir.resolve("recognized.txt");
-            try (BufferedWriter writer = Files.newBufferedWriter(recognizedTextPath)) {
-                for (SpeechRecognitionService.RecognizedItem item : recognized) {
-                    writer.write(item.getText());
-                    writer.newLine();
-                }
-            }
-            log.info("语音识别文本已输出到: {}", recognizedTextPath);
-
-            List<SubtitleEntry> subtitleEntries = new ArrayList<>();
-            Path srtPath = taskDir.resolve("subtitles.srt");
-            Path burnedVideoPath = null;
-
-            if (request.isTranslateSubtitles()) {
-                notifyProgress(taskId, "translating", 0.65f, "开始翻译字幕");
-                List<TranslatorService.TranslatedItem> translated =
-                    translatorService.translate(recognized, request.getSourceLanguage(), request.getTargetLanguage(),
-                        (p, m) -> notifyProgress(taskId, "translating", 0.65f + p * 0.20f, m));
-                notifyProgress(taskId, "translating", 0.85f, "字幕翻译完成");
-
-                notifyProgress(taskId, "generating_subtitle", 0.85f, "开始生成字幕文件");
-=======
     private Set<String> getCompletedSteps(String taskId) {
         TaskStatus status = tasks.get(taskId);
         if (status == null || status.getResult() == null || status.getResult().getCompletedSteps() == null) {
@@ -377,7 +298,6 @@ public class PipelineProcessor {
                 notifyProgress(taskId, "translating", 0.85f, "字幕翻译完成");
 
                 List<SubtitleEntry> subtitleEntries = new ArrayList<>();
->>>>>>> trae/solo-agent-DQFIa2
                 for (int i = 0; i < translated.size(); i++) {
                     TranslatorService.TranslatedItem item = translated.get(i);
                     SubtitleEntry entry = new SubtitleEntry();
@@ -388,12 +308,6 @@ public class PipelineProcessor {
                     entry.setTranslatedText(item.getTranslatedText());
                     subtitleEntries.add(entry);
                 }
-<<<<<<< HEAD
-                subtitleGenerator.generateSrt(subtitleEntries, srtPath, true);
-                notifyProgress(taskId, "generating_subtitle", 0.90f, "字幕文件生成完成");
-
-                burnedVideoPath = taskDir.resolve("video_burned.mp4");
-=======
 
                 TaskStatus status = tasks.get(taskId);
                 status.getResult().setSubtitles(subtitleEntries);
@@ -415,62 +329,10 @@ public class PipelineProcessor {
             if (!completed.contains("burning_subtitle")) {
                 TaskStatus status = tasks.get(taskId);
 
->>>>>>> trae/solo-agent-DQFIa2
                 notifyProgress(taskId, "burning_subtitle", 0.90f, "开始烧录字幕到视频");
                 try {
                     subtitleBurner.burn(videoPath, srtPath, burnedVideoPath);
                     notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录完成");
-<<<<<<< HEAD
-                } catch (Exception e) {
-                    log.warn("字幕烧录失败，跳过烧录步骤: {}", e.getMessage());
-                    burnedVideoPath = null;
-                    notifyProgress(taskId, "burning_subtitle", 0.98f, "字幕烧录失败已跳过");
-                }
-            } else {
-                notifyProgress(taskId, "generating_subtitle", 0.65f, "生成原始字幕文件");
-                for (int i = 0; i < recognized.size(); i++) {
-                    SpeechRecognitionService.RecognizedItem item = recognized.get(i);
-                    SubtitleEntry entry = new SubtitleEntry();
-                    entry.setIndex(i + 1);
-                    entry.setStartTime(SubtitleGenerator.secondsToSrtTime(item.getStartTime()));
-                    entry.setEndTime(SubtitleGenerator.secondsToSrtTime(item.getEndTime()));
-                    entry.setSourceText(item.getText());
-                    entry.setTranslatedText("");
-                    subtitleEntries.add(entry);
-                }
-                subtitleGenerator.generateSrt(subtitleEntries, srtPath, false);
-                notifyProgress(taskId, "generating_subtitle", 0.98f, "字幕文件生成完成");
-            }
-
-            double duration = audioExtractor.getDuration(audioPath);
-            TaskResult result = new TaskResult();
-            result.setVideoPath(videoPath.toString());
-            result.setSrtPath(srtPath.toString());
-            result.setRecognizedTextPath(recognizedTextPath.toString());
-            if (burnedVideoPath != null) {
-                result.setBurnedVideoPath(burnedVideoPath.toString());
-            }
-            result.setSubtitles(subtitleEntries);
-            result.setDuration(duration);
-            results.put(taskId, result);
-
-            TaskStatus status = tasks.get(taskId);
-            if (status != null) {
-                status.setResult(result);
-            }
-            notifyProgress(taskId, "completed", 1.0f, "处理完成");
-
-        } catch (Exception e) {
-            notifyProgress(taskId, "failed", 0.0f, "处理失败: " + e.getMessage());
-        }
-    }
-
-    public boolean updateSubtitles(String taskId, List<SubtitleEntry> subtitles) {
-        TaskResult result = results.get(taskId);
-        if (result == null) return false;
-
-        result.setSubtitles(subtitles);
-=======
                     status.getResult().setBurnedVideoPath(burnedVideoPath.toString());
                 } catch (Exception e) {
                     log.warn("字幕烧录失败，跳过烧录步骤: {}", e.getMessage());
@@ -518,24 +380,17 @@ public class PipelineProcessor {
         if (status == null || status.getResult() == null) return false;
 
         status.getResult().setSubtitles(subtitles);
->>>>>>> trae/solo-agent-DQFIa2
         Path taskDir = fileManager.createTaskDir(taskId);
         Path srtPath = taskDir.resolve("subtitles.srt");
         try {
             subtitleGenerator.generateSrt(subtitles, srtPath, true);
-<<<<<<< HEAD
-            result.setSrtPath(srtPath.toString());
-=======
             status.getResult().setSrtPath(srtPath.toString());
             persistTask(taskId);
->>>>>>> trae/solo-agent-DQFIa2
             return true;
         } catch (Exception e) {
             return false;
         }
     }
-<<<<<<< HEAD
-=======
 
     public boolean deleteTask(String taskId) {
         TaskStatus removed = tasks.remove(taskId);
@@ -558,5 +413,4 @@ public class PipelineProcessor {
 
         return true;
     }
->>>>>>> trae/solo-agent-DQFIa2
 }

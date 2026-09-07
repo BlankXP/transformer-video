@@ -1,21 +1,15 @@
 package com.bili.translator.service;
 
 import com.bili.translator.config.AppProperties;
-<<<<<<< HEAD
-=======
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
->>>>>>> trae/solo-agent-DQFIa2
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-<<<<<<< HEAD
-=======
 import java.nio.file.StandardCopyOption;
->>>>>>> trae/solo-agent-DQFIa2
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
@@ -25,11 +19,8 @@ import java.util.stream.Stream;
 @Service
 public class VideoDownloader {
 
-<<<<<<< HEAD
-=======
     private static final Logger log = LoggerFactory.getLogger(VideoDownloader.class);
 
->>>>>>> trae/solo-agent-DQFIa2
     private final AppProperties appProperties;
 
     public VideoDownloader(AppProperties appProperties) {
@@ -46,11 +37,7 @@ public class VideoDownloader {
         ProcessBuilder pb = new ProcessBuilder(
             "yt-dlp",
             "-o", outputPath,
-<<<<<<< HEAD
-            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-=======
             "-f", "bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc1]+bestaudio/best[ext=mp4]/best",
->>>>>>> trae/solo-agent-DQFIa2
             "--merge-output-format", "mp4",
             "--no-warnings",
             url
@@ -87,8 +74,6 @@ public class VideoDownloader {
             }
         }
 
-<<<<<<< HEAD
-=======
         return ensureH264(videoPath, progressCallback);
     }
 
@@ -158,7 +143,6 @@ public class VideoDownloader {
 
         Files.move(transcodedPath, videoPath, StandardCopyOption.REPLACE_EXISTING);
         log.info("视频转码完成: {}", videoPath);
->>>>>>> trae/solo-agent-DQFIa2
         return videoPath;
     }
 }

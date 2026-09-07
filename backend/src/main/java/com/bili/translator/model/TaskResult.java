@@ -10,11 +10,8 @@ public class TaskResult {
     private String burnedVideoPath;
     private List<SubtitleEntry> subtitles;
     private double duration;
-<<<<<<< HEAD
-=======
     private String completedSteps;
     private String audioPath;
->>>>>>> trae/solo-agent-DQFIa2
 
     public String getVideoPath() {
         return videoPath;
@@ -63,8 +60,6 @@ public class TaskResult {
     public void setDuration(double duration) {
         this.duration = duration;
     }
-<<<<<<< HEAD
-=======
 
     public String getCompletedSteps() {
         return completedSteps;
@@ -81,5 +76,4 @@ public class TaskResult {
     public void setAudioPath(String audioPath) {
         this.audioPath = audioPath;
     }
->>>>>>> trae/solo-agent-DQFIa2
 }

@@ -24,11 +24,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
-<<<<<<< HEAD
-=======
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
->>>>>>> trae/solo-agent-DQFIa2
 
 @Service
 public class SpeechRecognitionService {
@@ -43,32 +40,6 @@ public class SpeechRecognitionService {
         this.objectMapper = new ObjectMapper();
     }
 
-<<<<<<< HEAD
-    /**
-     * 识别音频文件，根据时长自动选择单段识别或分段识别
-     */
-    public List<RecognizedItem> recognize(Path audioPath, String language, BiConsumer<Float, String> progressCallback) throws Exception {
-        double duration = getAudioDuration(audioPath);
-        int segmentDuration = appProperties.getAudioSegmentDuration();
-        log.info("开始语音识别: audioPath={}, language={}, duration={}s, segmentDuration={}s", audioPath, language, duration, segmentDuration);
-
-        if (duration <= segmentDuration) {
-            log.info("音频时长未超过分段阈值，使用单段识别");
-            return recognizeSingle(audioPath, language);
-        } else {
-            log.info("音频时长超过分段阈值，使用分段识别");
-            return recognizeLong(audioPath, language, duration, progressCallback);
-        }
-    }
-
-    /**
-     * 单段音频识别，带重试机制
-     */
-    private List<RecognizedItem> recognizeSingle(Path audioPath, String language) throws Exception {
-        for (int attempt = 0; attempt < 3; attempt++) {
-            try {
-                return callRecognitionApi(audioPath, language);
-=======
     public List<RecognizedItem> recognize(Path audioPath, BiConsumer<Float, String> progressCallback) throws Exception {
         double duration = getAudioDuration(audioPath);
         int segmentDuration = appProperties.getAudioSegmentDuration();
@@ -91,7 +62,6 @@ public class SpeechRecognitionService {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 return callRecognitionApi(audioPath);
->>>>>>> trae/solo-agent-DQFIa2
             } catch (Exception e) {
                 log.warn("语音识别第{}次尝试失败: {}", attempt + 1, e.getMessage());
                 if (attempt < 2) {
@@ -107,27 +77,6 @@ public class SpeechRecognitionService {
         throw new RuntimeException("语音识别失败");
     }
 
-<<<<<<< HEAD
-    /**
-     * 长音频分段识别，将音频按指定时长切割后逐段识别
-     */
-    private List<RecognizedItem> recognizeLong(Path audioPath, String language, double duration, BiConsumer<Float, String> progressCallback) throws Exception {
-        List<RecognizedItem> allResults = new ArrayList<>();
-        int segmentDuration = appProperties.getAudioSegmentDuration();
-        int segments = (int) (duration / segmentDuration) + 1;
-        log.info("长音频分段识别: 共{}段", segments);
-
-        for (int i = 0; i < segments; i++) {
-            double start = i * segmentDuration;
-            Path segmentPath = audioPath.getParent().resolve("segment_" + i + ".wav");
-            log.debug("切割第{}段: start={}s, outputPath={}", i + 1, start, segmentPath);
-
-            ProcessBuilder pb = new ProcessBuilder(
-                "ffmpeg", "-y",
-                "-i", audioPath.toString(),
-                "-ss", String.valueOf(start),
-                "-t", String.valueOf(segmentDuration),
-=======
     private List<RecognizedItem> recognizeLong(Path audioPath, double duration, BiConsumer<Float, String> progressCallback) throws Exception {
         List<AudioSegment> activeSegments = detectActiveSegments(audioPath, duration);
         log.info("检测到{}个有声音片段", activeSegments.size());
@@ -151,7 +100,6 @@ public class SpeechRecognitionService {
                 "-i", audioPath.toString(),
                 "-ss", String.valueOf(seg.start),
                 "-t", String.valueOf(segDuration),
->>>>>>> trae/solo-agent-DQFIa2
                 "-ar", "16000", "-ac", "1",
                 segmentPath.toString()
             );
@@ -163,57 +111,22 @@ public class SpeechRecognitionService {
             process.waitFor();
 
             if (!Files.exists(segmentPath)) {
-<<<<<<< HEAD
-                log.warn("第{}段音频切割后文件不存在，跳过", i + 1);
-=======
                 log.warn("第{}个有声音片段切割后文件不存在，跳过", i + 1);
->>>>>>> trae/solo-agent-DQFIa2
                 continue;
             }
 
             List<RecognizedItem> results;
             try {
-<<<<<<< HEAD
-                results = recognizeSingle(segmentPath, language);
-            } catch (Exception e) {
-                log.warn("第{}段语音识别失败，跳过该段: {}", i + 1, e.getMessage());
-                Files.deleteIfExists(segmentPath);
-                if (progressCallback != null) {
-                    progressCallback.accept((float)(i + 1) / segments, "第" + (i + 1) + "段识别失败已跳过 " + (i + 1) + "/" + segments);
-=======
                 results = recognizeSingle(segmentPath);
             } catch (Exception e) {
                 log.warn("第{}个有声音片段语音识别失败，跳过: {}", i + 1, e.getMessage());
                 Files.deleteIfExists(segmentPath);
                 if (progressCallback != null) {
                     progressCallback.accept((float)(i + 1) / totalSegments, "第" + (i + 1) + "段识别失败已跳过 " + (i + 1) + "/" + totalSegments);
->>>>>>> trae/solo-agent-DQFIa2
                 }
                 continue;
             }
             for (RecognizedItem item : results) {
-<<<<<<< HEAD
-                item.setStartTime(item.getStartTime() + start);
-                item.setEndTime(item.getEndTime() + start);
-            }
-            allResults.addAll(results);
-            Files.deleteIfExists(segmentPath);
-            log.info("第{}/{}段识别完成, 识别到{}条句子", i + 1, segments, results.size());
-
-            if (progressCallback != null) {
-                progressCallback.accept((float)(i + 1) / segments, "识别进度 " + (i + 1) + "/" + segments);
-            }
-        }
-
-        log.info("长音频分段识别全部完成, 共识别到{}条句子", allResults.size());
-        return allResults;
-    }
-
-    /**
-     * 调用DashScope SDK流式回调接口进行语音识别，通过回调获取带真实时间戳的句子级结果
-     */
-    private List<RecognizedItem> callRecognitionApi(Path audioPath, String language) throws Exception {
-=======
                 item.setStartTime(item.getStartTime() + seg.start);
                 item.setEndTime(item.getEndTime() + seg.start);
             }
@@ -329,7 +242,6 @@ public class SpeechRecognitionService {
     }
 
     private List<RecognizedItem> callRecognitionApi(Path audioPath) throws Exception {
->>>>>>> trae/solo-agent-DQFIa2
         Recognition recognizer = new Recognition();
         List<RecognizedItem> results = Collections.synchronizedList(new ArrayList<>());
         CountDownLatch latch = new CountDownLatch(1);
@@ -340,16 +252,9 @@ public class SpeechRecognitionService {
             .model(appProperties.getAsrModel())
             .format("wav")
             .sampleRate(16000)
-<<<<<<< HEAD
-            .parameter("language_hints", new String[]{language})
-            .build();
-
-        log.debug("调用语音识别API(流式回调): model={}, language={}, file={}", appProperties.getAsrModel(), language, audioPath);
-=======
             .build();
 
         log.debug("调用语音识别API(流式回调, 自动检测语言): model={}, file={}", appProperties.getAsrModel(), audioPath);
->>>>>>> trae/solo-agent-DQFIa2
 
         ResultCallback<RecognitionResult> callback = new ResultCallback<RecognitionResult>() {
             @Override
@@ -409,12 +314,6 @@ public class SpeechRecognitionService {
         }
     }
 
-<<<<<<< HEAD
-    /**
-     * 使用ffprobe获取音频文件时长
-     */
-=======
->>>>>>> trae/solo-agent-DQFIa2
     private double getAudioDuration(Path audioPath) throws Exception {
         ProcessBuilder pb = new ProcessBuilder(
             "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", audioPath.toString()
@@ -433,8 +332,6 @@ public class SpeechRecognitionService {
         return duration;
     }
 
-<<<<<<< HEAD
-=======
     private static class AudioSegment {
         final double start;
         final double end;
@@ -445,7 +342,6 @@ public class SpeechRecognitionService {
         }
     }
 
->>>>>>> trae/solo-agent-DQFIa2
     public static class RecognizedItem {
         private String text;
         private double startTime;
