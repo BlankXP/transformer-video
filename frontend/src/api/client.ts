@@ -1,6 +1,6 @@
 import type { ProcessRequest, TaskStatus, SubtitleEntry } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://REDACTED_INTERNAL_HOST:8000';
 
 export { API_BASE_URL };
 

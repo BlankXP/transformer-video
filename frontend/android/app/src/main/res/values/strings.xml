@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">BiliTranslator</string>
-    <string name="title_activity_main">BiliTranslator</string>
-    <string name="package_name">com.bili.translator</string>
-    <string name="custom_url_scheme">com.bili.translator</string>
-</resources>

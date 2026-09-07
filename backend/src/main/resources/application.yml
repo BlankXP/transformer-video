@@ -8,7 +8,7 @@ spring:
 app:
   dashscope-api-key: ${DASHSCOPE_API_KEY:}
   openrouter-api-key: ${OPENROUTER_API_KEY:}
-  openrouter-model: ${OPENROUTER_MODEL:openai/gpt-oss-120b:free}
+  openrouter-model: ${OPENROUTER_MODEL:nvidia/nemotron-3-ultra-550b-a55b:free}
   temp-dir: ${TEMP_DIR:./temp}
   max-video-duration: ${MAX_VIDEO_DURATION:3600}
   audio-segment-duration: ${AUDIO_SEGMENT_DURATION:300}
