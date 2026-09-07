@@ -15,13 +15,10 @@ public class AppProperties {
     private int audioSegmentDuration = 300;
     private String asrModel = "paraformer-realtime-v2";
     private String translationModel = "qwen-plus";
-<<<<<<< HEAD
-=======
     private String authUsername = "admin";
     private String authPassword = "REDACTED_OLD_PASSWORD";
     private String jwtSecret = "REDACTED_JWT_SECRET";
     private long jwtExpiration = 86400000;
->>>>>>> trae/solo-agent-DQFIa2
 
     public String getDashscopeApiKey() {
         return dashscopeApiKey;
@@ -86,8 +83,6 @@ public class AppProperties {
     public void setTranslationModel(String translationModel) {
         this.translationModel = translationModel;
     }
-<<<<<<< HEAD
-=======
 
     public String getAuthUsername() {
         return authUsername;
@@ -120,5 +115,4 @@ public class AppProperties {
     public void setJwtExpiration(long jwtExpiration) {
         this.jwtExpiration = jwtExpiration;
     }
->>>>>>> trae/solo-agent-DQFIa2
 }
