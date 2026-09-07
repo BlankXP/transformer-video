@@ -1,14 +1,11 @@
 package com.bili.translator.controller;
 
-<<<<<<< HEAD
-=======
+
 import com.bili.translator.config.AppProperties;
->>>>>>> trae/solo-agent-DQFIa2
 import com.bili.translator.model.ProcessRequest;
 import com.bili.translator.model.TaskResult;
 import com.bili.translator.model.TaskStatus;
 import com.bili.translator.pipeline.PipelineProcessor;
-<<<<<<< HEAD
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -18,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-=======
 import com.bili.translator.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -37,14 +33,12 @@ import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
->>>>>>> trae/solo-agent-DQFIa2
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/video")
 public class VideoController {
 
-<<<<<<< HEAD
     private final PipelineProcessor processor;
 
     public VideoController(PipelineProcessor processor) {
@@ -56,7 +50,7 @@ public class VideoController {
         String taskId = processor.createTask(request);
         processor.process(taskId, request);
         return Map.of("task_id", taskId);
-=======
+  }
     private static final Logger log = LoggerFactory.getLogger(VideoController.class);
 
     private final PipelineProcessor processor;
@@ -131,7 +125,6 @@ public class VideoController {
         }
 
         return ResponseEntity.ok(Map.of("task_id", taskId));
->>>>>>> trae/solo-agent-DQFIa2
     }
 
     @GetMapping("/{taskId}/status")
@@ -143,8 +136,7 @@ public class VideoController {
         return ResponseEntity.ok(status);
     }
 
-<<<<<<< HEAD
-=======
+
     @DeleteMapping("/{taskId}")
     public ResponseEntity<?> deleteTask(@PathVariable String taskId) {
         boolean deleted = processor.deleteTask(taskId);
@@ -240,7 +232,6 @@ public class VideoController {
                 .body(body);
     }
 
->>>>>>> trae/solo-agent-DQFIa2
     @GetMapping("/{taskId}/burned")
     public ResponseEntity<Resource> downloadBurnedVideo(@PathVariable String taskId) {
         TaskResult result = processor.getTaskResult(taskId);
@@ -259,8 +250,6 @@ public class VideoController {
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
     }
-<<<<<<< HEAD
-=======
 
     private String extractToken(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
@@ -275,5 +264,4 @@ public class VideoController {
 
         return null;
     }
->>>>>>> trae/solo-agent-DQFIa2
 }
