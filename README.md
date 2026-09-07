@@ -135,4 +135,3 @@ docker compose up -d --build
 | `AUTH_PASSWORD` | `admin123` | 登录密码 |
 | `JWT_SECRET` | (内置默认值) | JWT 签名密钥,生产环境务必修改 |
 | `JWT_EXPIRATION` | `86400000` | Token 有效期(毫秒) |
->>>>>>> trae/solo-agent-DQFIa2
