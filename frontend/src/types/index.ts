@@ -14,11 +14,8 @@ export interface TaskStatus {
   progress: number;
   message: string;
   result?: TaskResult;
-<<<<<<< HEAD
-=======
   request?: ProcessRequest;
   created_at?: number;
->>>>>>> trae/solo-agent-DQFIa2
 }
 
 export interface SubtitleEntry {
@@ -33,23 +30,14 @@ export interface TaskResult {
   video_path: string;
   srt_path: string;
   burned_video_path?: string;
-<<<<<<< HEAD
-  subtitles: SubtitleEntry[];
-  duration: number;
-=======
   recognized_text_path?: string;
   subtitles: SubtitleEntry[];
   duration: number;
   completed_steps?: string;
->>>>>>> trae/solo-agent-DQFIa2
 }
 
 export interface ProcessRequest {
   url: string;
-<<<<<<< HEAD
-  source_language: string;
-=======
->>>>>>> trae/solo-agent-DQFIa2
   target_language: string;
   translate_subtitles: boolean;
 }

@@ -2,37 +2,17 @@ services:
   backend:
     build:
       context: ./backend
-<<<<<<< HEAD
-    ports:
-      - "8000:8000"
-    volumes:
-      - temp-data:/app/temp
-    environment:
-      - APP_DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
-=======
     network_mode: host
     volumes:
       - ./backend/temp:/app/temp
     env_file:
       - ./backend/.env
->>>>>>> trae/solo-agent-DQFIa2
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
-<<<<<<< HEAD
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-volumes:
-  temp-data:
-=======
     network_mode: host
     depends_on:
       - backend
     restart: unless-stopped
->>>>>>> trae/solo-agent-DQFIa2

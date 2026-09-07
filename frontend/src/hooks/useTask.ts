@@ -14,8 +14,6 @@ export default function useTask() {
     try {
       const result = await submitTask(request);
       setTaskId(result.task_id);
-<<<<<<< HEAD
-=======
       if (result.already_exists) {
         try {
           const s = await getTaskStatus(result.task_id);
@@ -24,7 +22,6 @@ export default function useTask() {
           void 0;
         }
       }
->>>>>>> trae/solo-agent-DQFIa2
       return result.task_id;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "任务提交失败");
@@ -44,9 +41,6 @@ export default function useTask() {
     }
   }, [taskId]);
 
-<<<<<<< HEAD
-  return { taskId, status, loading, error, startTask, refreshStatus };
-=======
   const selectTask = useCallback(async (id: string) => {
     setTaskId(id);
     try {
@@ -58,5 +52,4 @@ export default function useTask() {
   }, []);
 
   return { taskId, status, loading, error, startTask, refreshStatus, selectTask, setTaskId };
->>>>>>> trae/solo-agent-DQFIa2
 }
