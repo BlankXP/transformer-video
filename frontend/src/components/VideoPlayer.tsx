@@ -16,8 +16,16 @@ function VideoPlayer({ videoUrl }: Props) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
       <video
+<<<<<<< HEAD
         src={videoUrl}
         controls
+=======
+        key={videoUrl}
+        src={videoUrl}
+        controls
+        playsInline
+        preload="metadata"
+>>>>>>> trae/solo-agent-DQFIa2
         className="w-full rounded-lg"
       />
     </div>

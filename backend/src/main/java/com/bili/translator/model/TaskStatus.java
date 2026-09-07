@@ -7,6 +7,11 @@ public class TaskStatus {
     private double progress = 0.0;
     private String message = "";
     private TaskResult result;
+<<<<<<< HEAD
+=======
+    private ProcessRequest request;
+    private long createdAt;
+>>>>>>> trae/solo-agent-DQFIa2
 
     public String getTaskId() {
         return taskId;
@@ -47,4 +52,23 @@ public class TaskStatus {
     public void setResult(TaskResult result) {
         this.result = result;
     }
+<<<<<<< HEAD
+=======
+
+    public ProcessRequest getRequest() {
+        return request;
+    }
+
+    public void setRequest(ProcessRequest request) {
+        this.request = request;
+    }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(long createdAt) {
+        this.createdAt = createdAt;
+    }
+>>>>>>> trae/solo-agent-DQFIa2
 }
