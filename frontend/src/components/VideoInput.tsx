@@ -25,12 +25,6 @@ function VideoInput({ onSubmit, loading, authenticated, onLoginClick, initialUrl
   const [translateSubtitles, setTranslateSubtitles] = useState(true);
 
   useEffect(() => {
-    if (!authenticated) {
-      setTranslateSubtitles(false);
-    }
-  }, [authenticated]);
-
-  useEffect(() => {
     if (initialUrl) {
       setUrl(initialUrl);
     }
@@ -38,11 +32,16 @@ function VideoInput({ onSubmit, loading, authenticated, onLoginClick, initialUrl
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // 任务提交需要登录：未登录时引导到登录页，而不是发出必然 401 的请求
+    if (!authenticated) {
+      onLoginClick();
+      return;
+    }
     if (!url.trim()) return;
     onSubmit({
       url: url.trim(),
       target_language: targetLanguage,
-      translate_subtitles: authenticated && translateSubtitles,
+      translate_subtitles: translateSubtitles,
     });
   };
 
@@ -98,10 +97,10 @@ function VideoInput({ onSubmit, loading, authenticated, onLoginClick, initialUrl
       </div>
       <button
         type="submit"
-        disabled={loading || !url.trim()}
+        disabled={loading || (authenticated && !url.trim())}
         className="w-full py-2.5 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
       >
-        {loading ? "处理中..." : (authenticated && translateSubtitles ? "开始处理" : "下载视频")}
+        {loading ? "处理中..." : !authenticated ? "登录后使用" : (translateSubtitles ? "开始处理" : "下载视频")}
       </button>
     </form>
   );

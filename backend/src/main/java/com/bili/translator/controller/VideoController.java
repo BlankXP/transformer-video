@@ -1,11 +1,10 @@
 package com.bili.translator.controller;
 
-import com.bili.translator.config.AppProperties;
 import com.bili.translator.model.ProcessRequest;
 import com.bili.translator.model.TaskResult;
 import com.bili.translator.model.TaskStatus;
 import com.bili.translator.pipeline.PipelineProcessor;
-import com.bili.translator.util.JwtUtil;
+import com.bili.translator.util.VideoUrlValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,30 +31,28 @@ public class VideoController {
     private static final Logger log = LoggerFactory.getLogger(VideoController.class);
 
     private final PipelineProcessor processor;
-    private final AppProperties appProperties;
 
-    public VideoController(PipelineProcessor processor, AppProperties appProperties) {
+    public VideoController(PipelineProcessor processor) {
         this.processor = processor;
-        this.appProperties = appProperties;
     }
 
     @PostMapping("/process")
-    public ResponseEntity<?> processVideo(@RequestBody ProcessRequest request, HttpServletRequest httpRequest) {
-        if (request.isTranslateSubtitles()) {
-            String token = extractToken(httpRequest);
-            if (token == null || !JwtUtil.validateToken(token, appProperties.getJwtSecret())) {
-                return ResponseEntity.status(401).body(Map.of("error", "翻译字幕需要登录，请先登录"));
-            }
+    public ResponseEntity<?> processVideo(@RequestBody ProcessRequest request) {
+        String normalizedUrl;
+        try {
+            normalizedUrl = VideoUrlValidator.validateAndNormalize(request.getUrl());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+        request.setUrl(normalizedUrl);
+
+        PipelineProcessor.CreateResult created = processor.createOrGetTask(request);
+        if (created.alreadyExists()) {
+            return ResponseEntity.ok(Map.of("task_id", created.taskId(), "already_exists", true));
         }
 
-        TaskStatus existingTask = processor.findByUrl(request.getUrl());
-        if (existingTask != null) {
-            return ResponseEntity.ok(Map.of("task_id", existingTask.getTaskId(), "already_exists", true));
-        }
-
-        String taskId = processor.createTask(request);
-        processor.process(taskId, request);
-        return ResponseEntity.ok(Map.of("task_id", taskId));
+        processor.process(created.taskId(), request);
+        return ResponseEntity.ok(Map.of("task_id", created.taskId()));
     }
 
     @GetMapping("/tasks")
@@ -69,11 +66,15 @@ public class VideoController {
         if (status == null) {
             return ResponseEntity.ok(Map.of("exists", false));
         }
-        return ResponseEntity.ok(Map.of("exists", true, "task_id", status.getTaskId(), "status", status));
+        // 只回必要字段，避免把输入 URL、服务器路径、字幕内容一并吐出
+        return ResponseEntity.ok(Map.of(
+                "exists", true,
+                "task_id", status.getTaskId(),
+                "stage", status.getStage()));
     }
 
     @PostMapping("/{taskId}/retry")
-    public ResponseEntity<?> retryTask(@PathVariable String taskId, HttpServletRequest httpRequest) {
+    public ResponseEntity<?> retryTask(@PathVariable String taskId) {
         TaskStatus status = processor.getTaskStatus(taskId);
         if (status == null) {
             return ResponseEntity.notFound().build();
@@ -84,12 +85,6 @@ public class VideoController {
         }
 
         ProcessRequest request = status.getRequest();
-        if (request != null && request.isTranslateSubtitles()) {
-            String token = extractToken(httpRequest);
-            if (token == null || !JwtUtil.validateToken(token, appProperties.getJwtSecret())) {
-                return ResponseEntity.status(401).body(Map.of("error", "翻译字幕需要登录，请先登录"));
-            }
-        }
 
         status.setStage("downloading");
         status.setProgress(0.0);
@@ -116,7 +111,12 @@ public class VideoController {
 
     @DeleteMapping("/{taskId}")
     public ResponseEntity<?> deleteTask(@PathVariable String taskId) {
-        boolean deleted = processor.deleteTask(taskId);
+        boolean deleted;
+        try {
+            deleted = processor.deleteTask(taskId);
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        }
         if (!deleted) {
             return ResponseEntity.notFound().build();
         }
@@ -226,19 +226,5 @@ public class VideoController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + taskId + "_burned.mp4\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(resource);
-    }
-
-    private String extractToken(HttpServletRequest request) {
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            return authHeader.substring(7);
-        }
-
-        String queryToken = request.getParameter("token");
-        if (queryToken != null && !queryToken.isBlank()) {
-            return queryToken;
-        }
-
-        return null;
     }
 }

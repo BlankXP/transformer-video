@@ -39,6 +39,7 @@ interface Props {
 function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Props) {
   const [tasks, setTasks] = useState<TaskStatus[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -48,8 +49,9 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Pr
     try {
       const data = await listTasks();
       setTasks(data);
-    } catch {
-      void 0;
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "任务列表加载失败");
     } finally {
       setLoading(false);
     }
@@ -102,6 +104,9 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Pr
           {loading ? "加载中..." : "刷新"}
         </button>
       </div>
+      {error && (
+        <p className="text-xs text-red-500 bg-red-50 rounded px-2 py-1.5 mb-3">{error}</p>
+      )}
       {tasks.length === 0 ? (
         <p className="text-gray-400 text-sm text-center py-4">暂无历史任务</p>
       ) : (

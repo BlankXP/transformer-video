@@ -22,6 +22,8 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
@@ -276,34 +278,65 @@ public class TranslatorService {
     }
 
     /**
-     * 解析模型返回的编号格式翻译结果
+     * 解析模型返回的编号格式翻译结果。
+     *
+     * <p>按编号归位而非按行顺序取用；编号缺失或内容为空时抛异常，
+     * 由 {@link #translateBatch} 的有限次重试与拆批逻辑兜住，避免静默产出错位字幕。
      */
-    private static final Pattern NUMBERED_LINE = Pattern.compile("^\\[\\d+\\]\\s+(.*)$");
+    private static final Pattern NUMBERED_LINE = Pattern.compile("^\\[(\\d+)\\]\\s*(.*)$");
 
     private List<String> parseTranslated(String text, int expectedCount) {
-        List<String> results = new ArrayList<>();
-        String[] lines = text.trim().split("\n");
-        for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty()) continue;
+        Map<Integer, String> byIndex = new TreeMap<>();
+        Integer current = null;
+
+        for (String rawLine : text.trim().split("\n")) {
+            String line = rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
             Matcher matcher = NUMBERED_LINE.matcher(line);
             if (matcher.matches()) {
-                results.add(matcher.group(1).trim());
+                int index;
+                try {
+                    index = Integer.parseInt(matcher.group(1));
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                if (byIndex.containsKey(index)) {
+                    log.warn("翻译结果出现重复编号 {}，保留首次出现的内容", index);
+                    continue;
+                }
+                current = index;
+                byIndex.put(index, matcher.group(2).trim());
+            } else if (current != null) {
+                // 模型把同一条译文折成多行，续接到上一条
+                byIndex.merge(current, " " + line, String::concat);
             } else {
-                results.add(line);
+                log.warn("忽略无编号的前置内容: {}", line);
             }
         }
 
-        if (results.size() < expectedCount) {
-            log.warn("翻译结果数量不足: 期望{}条, 实际{}条, 缺失部分将填充空字符串", expectedCount, results.size());
-        } else if (results.size() > expectedCount) {
-            log.warn("翻译结果数量超出: 期望{}条, 实际{}条, 将截断", expectedCount, results.size());
+        List<Integer> missing = new ArrayList<>();
+        for (int i = 1; i <= expectedCount; i++) {
+            String value = byIndex.get(i);
+            if (value == null || value.isBlank()) {
+                missing.add(i);
+            }
+        }
+        if (!missing.isEmpty()) {
+            throw new IllegalStateException(
+                "翻译结果与请求不匹配：期望 " + expectedCount + " 条，缺失或为空编号 " + missing);
+        }
+        if (byIndex.size() > expectedCount) {
+            log.warn("翻译结果含多余编号（期望 {} 条，实得 {} 条），按 1..{} 取值",
+                expectedCount, byIndex.size(), expectedCount);
         }
 
-        while (results.size() < expectedCount) {
-            results.add("");
+        List<String> results = new ArrayList<>(expectedCount);
+        for (int i = 1; i <= expectedCount; i++) {
+            results.add(byIndex.get(i));
         }
-        return results.subList(0, Math.min(results.size(), expectedCount));
+        return results;
     }
 
     public static class TranslatedItem {

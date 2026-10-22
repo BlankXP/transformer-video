@@ -39,18 +39,23 @@ public class ProgressWebSocketHandler extends TextWebSocketHandler {
             session.close(CloseStatus.BAD_DATA);
             return;
         }
-        activeConnections.computeIfAbsent(taskId, k -> new CopyOnWriteArrayList<>()).add(session);
 
         TaskStatus status = pipelineProcessor.getTaskStatus(taskId);
-        if (status != null) {
-            String json = objectMapper.writeValueAsString(Map.of(
-                    "task_id", status.getTaskId(),
-                    "stage", status.getStage(),
-                    "progress", status.getProgress(),
-                    "message", status.getMessage()
-            ));
-            session.sendMessage(new TextMessage(json));
+        if (status == null) {
+            // 任务不存在（或已删除）时不建立长连接，避免 session 条目长期堆积
+            session.close(CloseStatus.POLICY_VIOLATION);
+            return;
         }
+
+        activeConnections.computeIfAbsent(taskId, k -> new CopyOnWriteArrayList<>()).add(session);
+
+        String json = objectMapper.writeValueAsString(Map.of(
+                "task_id", status.getTaskId(),
+                "stage", status.getStage(),
+                "progress", status.getProgress(),
+                "message", status.getMessage()
+        ));
+        session.sendMessage(new TextMessage(json));
     }
 
     @Override
