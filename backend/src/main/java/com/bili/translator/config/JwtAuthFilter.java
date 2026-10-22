@@ -54,21 +54,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return authHeader.substring(7);
         }
-
-        String queryToken = request.getParameter("token");
-        if (queryToken != null && !queryToken.isBlank()) {
-            return queryToken;
-        }
-
+        // 不再接受 ?token= ：下载已改为带 Authorization 头的 blob 请求，
+        // WebSocket 的令牌由 WsAuthInterceptor 单独校验
         return null;
     }
 
     private void sendUnauthorized(HttpServletResponse response, String message) throws IOException {
         response.setStatus(401);
         response.setContentType("application/json;charset=UTF-8");
-        response.setHeader("Access-Control-Allow-Origin", "*");
-        response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        response.setHeader("Access-Control-Allow-Headers", "*");
+        // CORS 响应头统一由 WebConfig 中的 CorsFilter 注入，此处重复设置会产生重复头导致浏览器拒绝响应
         response.getWriter().write("{\"error\":\"" + message + "\"}");
     }
 
@@ -78,10 +72,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 || path.equals("/error");
     }
 
+    /**
+     * 免登录路径。
+     *
+     * <p>仅保留视频预览：浏览器 {@code <video>} 标签无法附加 Authorization 头，
+     * 而任务状态、查重、任务提交、字幕下载等接口都必须登录。
+     */
     private boolean isPublicAccess(String path) {
-        return path.matches("/api/video/[^/]+/status")
-                || path.matches("/api/video/process")
-                || path.matches("/api/video/[^/]+/stream")
-                || path.matches("/api/video/find");
+        return path.matches("/api/video/[^/]+/stream");
     }
 }

@@ -4,11 +4,13 @@ import com.bili.translator.config.AppProperties;
 import com.bili.translator.model.*;
 import com.bili.translator.service.*;
 import com.bili.translator.websocket.ProgressWebSocketHandler;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -20,6 +22,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 @Service
 public class PipelineProcessor {
@@ -30,6 +33,11 @@ public class PipelineProcessor {
 
     private final ConcurrentHashMap<String, TaskStatus> tasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ProgressCallback> progressCallbacks = new ConcurrentHashMap<>();
+    /** 任务键（URL + 是否翻译 + 目标语言）-> taskId，用于原子查重 */
+    private final ConcurrentHashMap<String, String> taskKeyIndex = new ConcurrentHashMap<>();
+    /** 正在执行的 taskId，删除时用于拒绝 */
+    private final Set<String> runningTasks = ConcurrentHashMap.newKeySet();
+    private final Object createLock = new Object();
     private final ObjectMapper objectMapper = new ObjectMapper()
             .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
 
@@ -79,14 +87,14 @@ public class PipelineProcessor {
                         TaskStatus status = objectMapper.readValue(json, TaskStatus.class);
                         if (status != null && status.getTaskId() != null) {
                             if ("failed".equals(status.getStage())) {
-                                tasks.put(status.getTaskId(), status);
+                                registerTask(status);
                             } else if (!"completed".equals(status.getStage())) {
                                 status.setStage("failed");
                                 status.setMessage("服务重启，任务中断");
+                                registerTask(status);
                                 persistTask(status.getTaskId());
-                                tasks.put(status.getTaskId(), status);
                             } else {
-                                tasks.put(status.getTaskId(), status);
+                                registerTask(status);
                             }
                         }
                     } catch (Exception e) {
@@ -113,8 +121,16 @@ public class PipelineProcessor {
         }
     }
 
+    private void registerTask(TaskStatus status) {
+        tasks.put(status.getTaskId(), status);
+        String key = buildTaskKey(status.getRequest());
+        if (key != null) {
+            taskKeyIndex.put(key, status.getTaskId());
+        }
+    }
+
     public String createTask(ProcessRequest request) {
-        String taskId = UUID.randomUUID().toString().substring(0, 8);
+        String taskId = UUID.randomUUID().toString();
         TaskStatus status = new TaskStatus();
         status.setTaskId(taskId);
         status.setStage("downloading");
@@ -122,9 +138,54 @@ public class PipelineProcessor {
         status.setMessage("任务已创建");
         status.setRequest(request);
         status.setCreatedAt(System.currentTimeMillis());
-        tasks.put(taskId, status);
+        registerTask(status);
         persistTask(taskId);
         return taskId;
+    }
+
+    /**
+     * 原子地「查重 + 创建」。
+     *
+     * <p>任务键包含是否翻译与目标语言，避免「先仅下载、后请求翻译」或换目标语言时复用旧任务；
+     * 查重与创建在同一把锁内完成，并发提交不会产生重复任务。
+     */
+    public CreateResult createOrGetTask(ProcessRequest request) {
+        String key = buildTaskKey(request);
+        synchronized (createLock) {
+            if (key != null) {
+                String existingId = taskKeyIndex.get(key);
+                if (existingId != null) {
+                    TaskStatus existing = tasks.get(existingId);
+                    if (existing != null) {
+                        return new CreateResult(existingId, true);
+                    }
+                    // 索引悬挂（任务已被删除），清理后重新创建
+                    taskKeyIndex.remove(key, existingId);
+                }
+            }
+            return new CreateResult(createTask(request), false);
+        }
+    }
+
+    /**
+     * 任务键：归一化 URL + 是否翻译 + 目标语言。
+     */
+    private String buildTaskKey(ProcessRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String url = normalizeUrl(request.getUrl());
+        if (url.isEmpty()) {
+            return null;
+        }
+        if (!request.isTranslateSubtitles()) {
+            return url + "|download|-";
+        }
+        String lang = request.getTargetLanguage();
+        return url + "|translate|" + (lang == null || lang.isBlank() ? "auto" : lang.toLowerCase());
+    }
+
+    public record CreateResult(String taskId, boolean alreadyExists) {
     }
 
     public TaskStatus getTaskStatus(String taskId) {
@@ -224,11 +285,21 @@ public class PipelineProcessor {
 
     @Async
     public void process(String taskId, ProcessRequest request) {
+        runningTasks.add(taskId);
+        try {
+            runPipeline(taskId, request);
+        } finally {
+            runningTasks.remove(taskId);
+        }
+    }
+
+    private void runPipeline(String taskId, ProcessRequest request) {
         Set<String> completed = getCompletedSteps(taskId);
         Path taskDir = fileManager.createTaskDir(taskId);
         Path videoPath = taskDir.resolve("video.mp4");
         Path audioPath = taskDir.resolve("audio.wav");
         Path recognizedTextPath = taskDir.resolve("recognized.txt");
+        Path recognizedJsonPath = taskDir.resolve("recognized.json");
         Path srtPath = taskDir.resolve("subtitles.srt");
         Path burnedVideoPath = taskDir.resolve("video_burned.mp4");
 
@@ -274,6 +345,8 @@ public class PipelineProcessor {
                     (p, m) -> notifyProgress(taskId, "recognizing", 0.30f + p * 0.35f, m));
                 notifyProgress(taskId, "recognizing", 0.65f, "语音识别完成");
 
+                // 完整结果（含时间戳）落盘，供重试时恢复；纯文本仅用于前端下载
+                objectMapper.writeValue(recognizedJsonPath.toFile(), recognized);
                 try (BufferedWriter writer = Files.newBufferedWriter(recognizedTextPath)) {
                     for (SpeechRecognitionService.RecognizedItem item : recognized) {
                         writer.write(item.getText());
@@ -288,7 +361,7 @@ public class PipelineProcessor {
 
             if (!completed.contains("translating")) {
                 if (recognized == null) {
-                    recognized = loadRecognizedItems(recognizedTextPath);
+                    recognized = loadRecognizedItems(recognizedJsonPath, recognizedTextPath, audioPath);
                 }
 
                 notifyProgress(taskId, "translating", 0.65f, "开始翻译字幕");
@@ -356,23 +429,56 @@ public class PipelineProcessor {
         }
     }
 
-    private List<SpeechRecognitionService.RecognizedItem> loadRecognizedItems(Path recognizedTextPath) {
-        List<SpeechRecognitionService.RecognizedItem> items = new ArrayList<>();
+    /**
+     * 加载识别结果。
+     *
+     * <p>优先读取 recognized.json（含完整时间戳）；仅当历史任务缺少该文件时，才从纯文本重建，
+     * 并按音频时长均分时间轴，避免所有字幕落在 00:00:00。
+     */
+    private List<SpeechRecognitionService.RecognizedItem> loadRecognizedItems(
+            Path recognizedJsonPath, Path recognizedTextPath, Path audioPath) {
         try {
-            List<String> lines = Files.readAllLines(recognizedTextPath);
-            for (String line : lines) {
-                if (!line.isBlank()) {
-                    SpeechRecognitionService.RecognizedItem item = new SpeechRecognitionService.RecognizedItem();
-                    item.setText(line.trim());
-                    item.setStartTime(0.0);
-                    item.setEndTime(0.0);
-                    items.add(item);
+            if (Files.exists(recognizedJsonPath)) {
+                List<SpeechRecognitionService.RecognizedItem> cached = objectMapper.readValue(
+                    recognizedJsonPath.toFile(),
+                    new TypeReference<List<SpeechRecognitionService.RecognizedItem>>() {});
+                if (cached != null && !cached.isEmpty()) {
+                    log.info("从 recognized.json 恢复识别结果: {} 条", cached.size());
+                    return cached;
                 }
             }
+
+            log.warn("未找到带时间戳的识别结果，回退到纯文本重建: {}", recognizedTextPath);
+            List<String> lines = Files.readAllLines(recognizedTextPath).stream()
+                .filter(line -> !line.isBlank())
+                .map(String::trim)
+                .toList();
+            if (lines.isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            double duration = 0;
+            if (Files.exists(audioPath)) {
+                try {
+                    duration = audioExtractor.getDuration(audioPath);
+                } catch (Exception e) {
+                    log.warn("获取音频时长失败，时间轴将无法均分: {}", e.getMessage());
+                }
+            }
+
+            List<SpeechRecognitionService.RecognizedItem> items = new ArrayList<>(lines.size());
+            for (int i = 0; i < lines.size(); i++) {
+                SpeechRecognitionService.RecognizedItem item = new SpeechRecognitionService.RecognizedItem();
+                item.setText(lines.get(i));
+                item.setStartTime(duration * i / lines.size());
+                item.setEndTime(duration * (i + 1) / lines.size());
+                items.add(item);
+            }
+            log.info("纯文本重建完成: {} 条，按 {}s 均分", items.size(), (long) duration);
+            return items;
         } catch (Exception e) {
-            throw new RuntimeException("加载识别文本失败: " + e.getMessage(), e);
+            throw new RuntimeException("加载识别结果失败: " + e.getMessage(), e);
         }
-        return items;
     }
 
     public boolean updateSubtitles(String taskId, List<SubtitleEntry> subtitles) {
@@ -392,25 +498,71 @@ public class PipelineProcessor {
         }
     }
 
+    /**
+     * 删除任务及其文件。
+     *
+     * @throws IllegalStateException 任务正在处理中，应先等待完成
+     */
     public boolean deleteTask(String taskId) {
+        if (runningTasks.contains(taskId)) {
+            throw new IllegalStateException("任务正在处理中，请等待完成后再删除");
+        }
+
         TaskStatus removed = tasks.remove(taskId);
         if (removed == null) return false;
 
         progressCallbacks.remove(taskId);
+        String key = buildTaskKey(removed.getRequest());
+        if (key != null) {
+            taskKeyIndex.remove(key, taskId);
+        }
 
         try {
             Path taskDir = fileManager.getTaskDir(taskId);
             if (Files.exists(taskDir)) {
-                Files.walk(taskDir)
-                     .sorted(java.util.Comparator.reverseOrder())
-                     .forEach(p -> {
-                         try { Files.deleteIfExists(p); } catch (Exception ignored) {}
-                     });
+                // try-with-resources 确保文件句柄释放，否则 Windows 下目录可能删不掉
+                try (Stream<Path> walk = Files.walk(taskDir)) {
+                    walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                        try {
+                            Files.deleteIfExists(p);
+                        } catch (Exception ignored) {
+                            // 文件被占用时跳过，交给下次清理
+                        }
+                    });
+                }
             }
         } catch (Exception e) {
             log.warn("删除任务目录失败: {}", taskId, e);
         }
 
         return true;
+    }
+
+    /**
+     * 定期清理过期任务：内存条目与磁盘文件一并移除，并清理残留目录。
+     */
+    @Scheduled(fixedDelay = 3600_000L, initialDelay = 600_000L)
+    public void cleanupExpiredTasks() {
+        int retentionHours = Math.max(1, appProperties.getTaskRetentionHours());
+        long cutoff = System.currentTimeMillis() - retentionHours * 3600_000L;
+
+        List<String> expired = tasks.values().stream()
+            .filter(s -> s.getCreatedAt() > 0 && s.getCreatedAt() < cutoff)
+            .filter(s -> !runningTasks.contains(s.getTaskId()))
+            .map(TaskStatus::getTaskId)
+            .toList();
+
+        for (String id : expired) {
+            try {
+                if (deleteTask(id)) {
+                    log.info("已清理过期任务: {}", id);
+                }
+            } catch (IllegalStateException e) {
+                log.debug("任务在清理时开始运行，跳过: {}", id);
+            }
+        }
+
+        // 清理不属于任何任务的残留目录（服务中断等情况留下的）
+        fileManager.cleanupOrphanDirs(tasks.keySet(), retentionHours);
     }
 }

@@ -2,17 +2,27 @@ services:
   backend:
     build:
       context: ./backend
-    network_mode: host
+    # 只在内网暴露，由 frontend 的 nginx 转发；调试时临时改成 ports: ["8000:8000"]
+    expose:
+      - "8000"
     volumes:
       - ./backend/temp:/app/temp
     env_file:
       - ./backend/.env
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8000' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
-    network_mode: host
+    ports:
+      - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped

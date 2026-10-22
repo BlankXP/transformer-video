@@ -1,7 +1,8 @@
 import type { ProcessRequest, TaskStatus, SubtitleEntry } from '../types';
 
-// 默认使用同源相对路径(生产走 Nginx 反代,开发走 Vite proxy);可用 VITE_API_BASE_URL 直连后端
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+// 默认留空表示同源：生产由 nginx 把 /api 与 /ws 转发到后端，开发由 vite proxy 兜住。
+// 仅在前端与后端分离部署（不同域名）时才需要设置 VITE_API_BASE_URL（构建期生效）。
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export { API_BASE_URL };
 
@@ -19,6 +20,14 @@ export function removeToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/** 登录态失效，调用方应引导用户重新登录 */
+export class AuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -28,115 +37,128 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-export async function login(username: string, password: string): Promise<{ token: string; username: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || '登录失败');
-  }
-  return response.json();
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  /** 是否附带令牌，默认 true */
+  auth?: boolean;
+  /** 登录接口专用：401 时直接使用后端返回的错误文案 */
+  isLogin?: boolean;
 }
 
-export async function submitTask(request: ProcessRequest): Promise<{ task_id: string; already_exists?: boolean }> {
-  const response = await fetch(`${API_BASE_URL}/api/video/process`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(request),
-  });
+/**
+ * 统一请求入口：所有非 2xx 都抛错，避免调用方把失败当成功。
+ */
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, auth = true, isLogin = false } = options;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: auth ? authHeaders() : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('无法连接到服务器，请检查网络后重试');
+  }
+
   if (response.status === 401) {
+    if (isLogin) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error || '用户名或密码错误');
+    }
+    removeToken();
+    throw new AuthError('登录已过期，请重新登录');
+  }
+
+  if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || '翻译字幕需要登录');
+    const message = (data as { error?: string }).error;
+    throw new Error(message || `请求失败（HTTP ${response.status}）`);
   }
-  if (!response.ok) {
-    throw new Error('任务提交失败');
+
+  if (response.status === 204) {
+    return undefined as T;
   }
-  return response.json();
+
+  return response.json() as Promise<T>;
 }
 
-export async function listTasks(): Promise<TaskStatus[]> {
-  const response = await fetch(`${API_BASE_URL}/api/video/tasks`, {
-    headers: authHeaders(),
-  });
-  if (!response.ok) return [];
-  return response.json();
-}
-
-export async function findTask(url: string): Promise<{ exists: boolean; task_id?: string }> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  const response = await fetch(`${API_BASE_URL}/api/video/find?url=${encodeURIComponent(url)}`, {
-    headers,
-  });
-  if (!response.ok) {
-    console.warn("findTask API 返回非200状态:", response.status);
-    return { exists: false };
-  }
-  return response.json();
-}
-
-export async function retryTask(taskId: string): Promise<{ task_id: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/retry`, {
+export function login(username: string, password: string): Promise<{ token: string; username: string }> {
+  return request<{ token: string; username: string }>('/api/auth/login', {
     method: 'POST',
-    headers: authHeaders(),
+    body: { username, password },
+    auth: false,
+    isLogin: true,
   });
-  if (response.status === 401) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || '翻译字幕需要登录');
+}
+
+export function submitTask(payload: ProcessRequest): Promise<{ task_id: string; already_exists?: boolean }> {
+  return request<{ task_id: string; already_exists?: boolean }>('/api/video/process', {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export function listTasks(): Promise<TaskStatus[]> {
+  return request<TaskStatus[]>('/api/video/tasks');
+}
+
+export function retryTask(taskId: string): Promise<{ task_id: string }> {
+  return request<{ task_id: string }>(`/api/video/${taskId}/retry`, { method: 'POST' });
+}
+
+export function deleteTask(taskId: string): Promise<void> {
+  return request<void>(`/api/video/${taskId}`, { method: 'DELETE' });
+}
+
+export function getTaskStatus(taskId: string): Promise<TaskStatus> {
+  return request<TaskStatus>(`/api/video/${taskId}/status`);
+}
+
+export type DownloadKind = 'srt' | 'txt' | 'burned';
+
+/**
+ * 下载文件。
+ *
+ * <p>用 fetch 携带 Authorization 头取回 blob，再用临时 objectURL 触发保存；
+ * 令牌不会出现在 URL、浏览器历史或代理访问日志里。
+ */
+export async function downloadFile(taskId: string, kind: DownloadKind, filename: string): Promise<void> {
+  const path = kind === 'burned'
+    ? `/api/video/${taskId}/burned`
+    : `/api/subtitle/${taskId}/${kind}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
+  } catch {
+    throw new Error('无法连接到服务器，请检查网络后重试');
   }
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || '重试失败');
-  }
-  return response.json();
-}
 
-export async function deleteTask(taskId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/video/${taskId}`, {
-    method: 'DELETE',
-    headers: authHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error('删除失败');
-  }
-}
-
-export async function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  const response = await fetch(`${API_BASE_URL}/api/video/${taskId}/status`, {
-    headers: authHeaders(),
-  });
-  return response.json();
-}
-
-export function getSubtitleSrtUrl(taskId: string): string {
-  const token = getToken();
-  return `${API_BASE_URL}/api/subtitle/${taskId}/srt${token ? '?token=' + token : ''}`;
-}
-
-export function getRecognizedTxtUrl(taskId: string): string {
-  const token = getToken();
-  return `${API_BASE_URL}/api/subtitle/${taskId}/txt${token ? '?token=' + token : ''}`;
-}
-
-export function getBurnedVideoUrl(taskId: string): string {
-  const token = getToken();
-  return `${API_BASE_URL}/api/video/${taskId}/burned${token ? '?token=' + token : ''}`;
-}
-
-export async function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/subtitle/${taskId}`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify(subtitles),
-  });
   if (response.status === 401) {
     removeToken();
-    throw new Error('登录已过期，请重新登录');
+    throw new AuthError('登录已过期，请重新登录');
   }
+  if (!response.ok) {
+    throw new Error(`下载失败（HTTP ${response.status}）`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): Promise<{ message: string }> {
+  return request<{ message: string }>(`/api/subtitle/${taskId}`, {
+    method: 'PUT',
+    body: subtitles,
+  });
 }

@@ -8,8 +8,21 @@ import TaskHistoryPanel from "./components/TaskHistoryPanel";
 import LoginPage from "./components/LoginPage";
 import useTask from "./hooks/useTask";
 import useWebSocket from "./hooks/useWebSocket";
-import { saveSubtitle, API_BASE_URL, login, getToken, setToken, removeToken, findTask } from "./api/client";
+import {
+  AuthError,
+  saveSubtitle,
+  API_BASE_URL,
+  login,
+  getToken,
+  setToken,
+  removeToken,
+} from "./api/client";
 import type { SubtitleEntry, ProcessRequest } from "./types";
+
+interface Toast {
+  text: string;
+  type: "ok" | "error";
+}
 
 function App() {
   const [authenticated, setAuthenticated] = useState(!!getToken());
@@ -18,8 +31,9 @@ function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
   const [selectedUrl, setSelectedUrl] = useState<string>("");
+  const [toast, setToast] = useState<Toast | null>(null);
 
-  const { taskId, status, loading, startTask, refreshStatus, selectTask } = useTask();
+  const { taskId, status, loading, error, startTask, refreshStatus, selectTask, clearError } = useTask();
   const { stage, progress, message } = useWebSocket(taskId);
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -41,6 +55,23 @@ function App() {
       setVideoUrl(null);
     }
   }, [status, taskId]);
+
+  // 任务层的错误统一冒泡为提示
+  useEffect(() => {
+    if (!error) return;
+    setToast({ text: error, type: "error" });
+    // AuthError 会清掉本地令牌，这里同步退回未登录态
+    if (!getToken() && authenticated) {
+      setAuthenticated(false);
+    }
+    clearError();
+  }, [error, clearError, authenticated]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const handleLogin = async (user: string, pass: string) => {
     setAuthLoading(true);
@@ -66,29 +97,24 @@ function App() {
 
   const handleSubmit = async (request: ProcessRequest) => {
     setSelectedUrl(request.url);
-
-    try {
-      const found = await findTask(request.url);
-      if (found.exists && found.task_id) {
-        await selectTask(found.task_id);
-        return;
-      }
-    } catch (e) {
-      console.warn("findTask 查重请求失败，将由后端兜底查重:", e);
-    }
-
     setSubtitles([]);
     setVideoUrl(null);
+    // 查重与创建在后端一次完成（按 URL + 是否翻译 + 目标语言），
+    // 命中已有任务时复用并回填状态，避免前端先查后建的竞态
     await startTask(request);
   };
 
   const handleSaveSubtitles = async (updatedSubtitles: SubtitleEntry[]) => {
     if (!taskId) return;
     try {
-      await saveSubtitle(taskId, updatedSubtitles);
+      const result = await saveSubtitle(taskId, updatedSubtitles);
       setSubtitles(updatedSubtitles);
-    } catch {
-      void 0;
+      setToast({ text: result.message || "字幕已保存", type: "ok" });
+    } catch (e) {
+      if (e instanceof AuthError) {
+        setAuthenticated(false);
+      }
+      setToast({ text: e instanceof Error ? e.message : "保存失败", type: "error" });
     }
   };
 
@@ -107,9 +133,21 @@ function App() {
     }
   };
 
+  const toastNode = toast ? (
+    <div
+      className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm text-white shadow-lg transition ${
+        toast.type === "ok" ? "bg-green-600" : "bg-red-600"
+      }`}
+      role="status"
+    >
+      {toast.text}
+    </div>
+  ) : null;
+
   if (showLogin && !authenticated) {
     return (
       <div className="min-h-screen bg-gray-50">
+        {toastNode}
         <div className="max-w-sm mx-auto pt-20">
           <LoginPage onLogin={handleLogin} error={authError} loading={authLoading} />
           <div className="text-center mt-4">
@@ -127,10 +165,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {toastNode}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">
-            B站/YouTube 视频翻译字幕生成器
+            B站视频翻译字幕生成器
           </h1>
           <div className="flex items-center gap-3">
             {authenticated ? (

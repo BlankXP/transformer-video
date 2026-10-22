@@ -1,62 +1,56 @@
 package com.bili.translator.service;
 
+import com.bili.translator.config.AppProperties;
+import com.bili.translator.util.ProcessRunner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 
 @Service
 public class AudioExtractor {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private final AppProperties appProperties;
+
+    public AudioExtractor(AppProperties appProperties) {
+        this.appProperties = appProperties;
+    }
+
     public void extract(Path videoPath, Path outputPath) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-            "ffmpeg", "-y",
-            "-i", videoPath.toString(),
-            "-ar", "16000",
-            "-ac", "1",
-            "-f", "wav",
-            outputPath.toString()
-        );
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
+        ProcessRunner.ProcessResult result = ProcessRunner.run(
+            List.of("ffmpeg", "-y",
+                "-i", videoPath.toString(),
+                "-ar", "16000",
+                "-ac", "1",
+                "-f", "wav",
+                outputPath.toString()),
+            extractTimeout());
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            while (reader.readLine() != null) {
-            }
-        }
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            throw new RuntimeException("ffmpeg 音频提取失败，退出码: " + exitCode);
+        if (!result.isSuccess()) {
+            throw new RuntimeException("ffmpeg 音频提取失败，退出码: " + result.exitCode());
         }
     }
 
     public double getDuration(Path audioPath) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-            "ffprobe",
-            "-v", "quiet",
-            "-print_format", "json",
-            "-show_format",
-            audioPath.toString()
-        );
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
+        ProcessRunner.ProcessResult result = ProcessRunner.run(
+            List.of("ffprobe",
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_format",
+                audioPath.toString()),
+            Duration.ofSeconds(30));
 
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line);
-            }
-        }
-
-        process.waitFor();
-
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = mapper.readTree(output.toString());
+        JsonNode root = MAPPER.readTree(result.output());
         return root.path("format").path("duration").asDouble();
+    }
+
+    /** 解码整条音轨，预留 2 倍视频上限 + 10 分钟余量 */
+    private Duration extractTimeout() {
+        return Duration.ofSeconds((long) appProperties.getMaxVideoDuration() * 2 + 600);
     }
 }

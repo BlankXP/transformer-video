@@ -5,18 +5,18 @@ import com.alibaba.dashscope.audio.asr.recognition.RecognitionParam;
 import com.alibaba.dashscope.audio.asr.recognition.RecognitionResult;
 import com.alibaba.dashscope.common.ResultCallback;
 import com.bili.translator.config.AppProperties;
+import com.bili.translator.util.ProcessRunner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
 import java.io.FileInputStream;
-import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -95,20 +95,19 @@ public class SpeechRecognitionService {
             log.debug("切割第{}个有声音片段: start={}s, end={}s, outputPath={}", i + 1, seg.start, seg.end, segmentPath);
 
             double segDuration = seg.end - seg.start;
-            ProcessBuilder pb = new ProcessBuilder(
-                "ffmpeg", "-y",
-                "-i", audioPath.toString(),
-                "-ss", String.valueOf(seg.start),
-                "-t", String.valueOf(segDuration),
-                "-ar", "16000", "-ac", "1",
-                segmentPath.toString()
-            );
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                while (reader.readLine() != null) {}
+            ProcessRunner.ProcessResult cutResult = ProcessRunner.run(
+                List.of("ffmpeg", "-y",
+                    "-i", audioPath.toString(),
+                    "-ss", String.valueOf(seg.start),
+                    "-t", String.valueOf(segDuration),
+                    "-ar", "16000", "-ac", "1",
+                    segmentPath.toString()),
+                Duration.ofSeconds(300));
+
+            if (!cutResult.isSuccess()) {
+                log.warn("第{}个有声音片段切割失败（退出码 {}），跳过", i + 1, cutResult.exitCode());
+                continue;
             }
-            process.waitFor();
 
             if (!Files.exists(segmentPath)) {
                 log.warn("第{}个有声音片段切割后文件不存在，跳过", i + 1);
@@ -184,23 +183,18 @@ public class SpeechRecognitionService {
         double noiseDb = -50;
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                "ffmpeg", "-i", audioPath.toString(),
-                "-af", "silencedetect=noise=" + noiseDb + "dB:d=" + (silenceDurationMs / 1000.0),
-                "-f", "null", "-"
-            );
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
             List<Double> silenceStarts = new ArrayList<>();
             List<Double> silenceEnds = new ArrayList<>();
 
             Pattern startPattern = Pattern.compile("silence_start:\\s*(\\d+\\.?\\d*)");
             Pattern endPattern = Pattern.compile("silence_end:\\s*(\\d+\\.?\\d*)");
 
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
+            ProcessRunner.run(
+                List.of("ffmpeg", "-i", audioPath.toString(),
+                    "-af", "silencedetect=noise=" + noiseDb + "dB:d=" + (silenceDurationMs / 1000.0),
+                    "-f", "null", "-"),
+                Duration.ofSeconds((long) appProperties.getMaxVideoDuration() * 2 + 600),
+                line -> {
                     Matcher startMatcher = startPattern.matcher(line);
                     if (startMatcher.find()) {
                         silenceStarts.add(Double.parseDouble(startMatcher.group(1)));
@@ -209,9 +203,7 @@ public class SpeechRecognitionService {
                     if (endMatcher.find()) {
                         silenceEnds.add(Double.parseDouble(endMatcher.group(1)));
                     }
-                }
-            }
-            process.waitFor();
+                });
 
             for (int i = 0; i < silenceStarts.size(); i++) {
                 double start = silenceStarts.get(i);
@@ -301,7 +293,21 @@ public class SpeechRecognitionService {
             }
 
             recognizer.stop();
-            latch.await(300, TimeUnit.SECONDS);
+
+            // 按音频长度放宽等待：音频按实时速率推送，长音频的最后一条回调可能晚于 300 秒
+            long estimatedSeconds = 0;
+            try {
+                // WAV 16kHz / 16bit / 单声道 ≈ 32000 字节每秒
+                estimatedSeconds = Files.size(audioPath) / 32000L;
+            } catch (Exception ignored) {
+                // 估算失败时退回固定等待
+            }
+            long waitSeconds = Math.max(300, estimatedSeconds + 120);
+
+            if (!latch.await(waitSeconds, TimeUnit.SECONDS)) {
+                throw new RuntimeException(
+                    "语音识别超时（等待 " + waitSeconds + " 秒仍未完成），已收到 " + results.size() + " 条结果");
+            }
 
             if (errorRef.get() != null) {
                 throw new RuntimeException("语音识别失败", errorRef.get());
@@ -315,18 +321,11 @@ public class SpeechRecognitionService {
     }
 
     private double getAudioDuration(Path audioPath) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-            "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", audioPath.toString()
-        );
-        pb.redirectErrorStream(true);
-        Process process = pb.start();
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) output.append(line);
-        }
-        process.waitFor();
-        JsonNode root = objectMapper.readTree(output.toString());
+        ProcessRunner.ProcessResult result = ProcessRunner.run(
+            List.of("ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", audioPath.toString()),
+            Duration.ofSeconds(30));
+
+        JsonNode root = objectMapper.readTree(result.output());
         double duration = root.path("format").path("duration").asDouble();
         log.debug("获取音频时长: path={}, duration={}s", audioPath, duration);
         return duration;
