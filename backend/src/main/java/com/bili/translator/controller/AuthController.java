@@ -26,11 +26,15 @@ public class AuthController {
     private static final int MAX_FAILURES = 5;
     /** 锁定时长 */
     private static final long LOCK_MILLIS = 5 * 60 * 1000L;
+    /** 失败计数多久没有新失败就丢弃：既让 Map 有界，也让「连续失败」有合理的统计窗口 */
+    private static final long FAILURE_TTL_MILLIS = 60 * 60 * 1000L;
+    /** 超过这个规模才触发惰性清理，避免每次登录都扫一遍 */
+    private static final int PURGE_THRESHOLD = 256;
 
     private final AppProperties appProperties;
 
-    /** ip -> [连续失败次数, 锁定截止时间] */
-    private final Map<String, long[]> attempts = new ConcurrentHashMap<>();
+    /** ip -> [连续失败次数, 锁定截止时间, 最后失败时间]（包级可见供测试构造数据） */
+    final Map<String, long[]> attempts = new ConcurrentHashMap<>();
 
     public AuthController(AppProperties appProperties) {
         this.appProperties = appProperties;
@@ -39,8 +43,10 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
         String ip = clientIp(httpRequest);
-        long[] record = attempts.computeIfAbsent(ip, k -> new long[2]);
         long now = System.currentTimeMillis();
+        purgeExpired(now);
+
+        long[] record = attempts.computeIfAbsent(ip, k -> new long[]{0, 0, now});
 
         synchronized (record) {
             if (record[1] > now) {
@@ -64,6 +70,7 @@ public class AuthController {
         if (!usernameMatches || !passwordMatches) {
             synchronized (record) {
                 record[0]++;
+                record[2] = now;
                 if (record[0] >= MAX_FAILURES) {
                     record[1] = now + LOCK_MILLIS;
                     record[0] = 0;
@@ -90,11 +97,42 @@ public class AuthController {
                 b.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * 客户端 IP，仅用于登录失败限流。
+     *
+     * <p>前端合并进后端后不再有 nginx 覆盖 {@code X-Forwarded-For}，该头完全由客户端提供，
+     * 每个请求换一个值就能绕开「5 次锁定」，因此默认只认 TCP 层的 remoteAddr；
+     * 只有当前面确实有一层会覆盖写入 {@code X-Real-IP} 的可信代理时才通过配置开启。
+     */
     private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+        if (appProperties.isTrustProxyHeaders()) {
+            String realIp = request.getHeader("X-Real-IP");
+            if (realIp != null && !realIp.isBlank()) {
+                return realIp.trim();
+            }
         }
         return request.getRemoteAddr();
+    }
+
+    /**
+     * 惰性清理失败记录。
+     *
+     * <p>没有这一步时，每个曾经失败过一次的 IP 都会永久留在 Map 里；公网暴露下
+     * 扫描器会带来大量不同来源 IP，内存只增不减（每条记录约百字节，百万级即上百 MB）。
+     *
+     * <p>只清「未在锁定中、且超过 TTL 没有新失败」的条目：锁定中的记录必须留到锁定期结束。
+     *
+     * <p>包级可见：单测直接注入时间，不依赖系统时钟。
+     */
+    void purgeExpired(long now) {
+        if (attempts.size() < PURGE_THRESHOLD) {
+            return;
+        }
+        attempts.entrySet().removeIf(entry -> {
+            long[] record = entry.getValue();
+            synchronized (record) {
+                return record[1] <= now && now - record[2] > FAILURE_TTL_MILLIS;
+            }
+        });
     }
 }

@@ -8,9 +8,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -31,6 +30,40 @@ public final class ProcessRunner {
     /** 采集输出的上限，避免长任务把内存吃满 */
     private static final int MAX_CAPTURE_CHARS = 256 * 1024;
 
+    /**
+     * 共享的超时看门狗。
+     *
+     * <p>原先每次执行子进程都新建一个单线程调度器再 shutdown，一个视频处理下来要建几十个。
+     * 这里改成全局固定的 4 个线程（与处理线程池 core 数一致）；超时是异常路径，
+     * 极端情况下多个进程同时超时需要排几秒队，可以接受。
+     */
+    private static final ScheduledThreadPoolExecutor WATCHDOG = createWatchdog();
+
+    /**
+     * 构造看门狗实例。
+     *
+     * <p>必须开启 {@code removeOnCancelPolicy}：默认策略下 {@code cancel()} 只把任务标记为取消、
+     * 并不从延时队列移出，要留到延迟到期才被清理。而这里的延迟按
+     * {@code max-video-duration} 推算，动辄数小时（60 分钟视频约 6.2 小时），
+     * 期间任务对象会一直持有 {@link Process} 与命令行引用，队列随子进程数量持续增长。
+     *
+     * <p>包级可见是为了让测试直接造一个同配置的实例验证队列行为。
+     */
+    static ScheduledThreadPoolExecutor createWatchdog() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(4, r -> {
+            Thread t = new Thread(r, "proc-watchdog");
+            t.setDaemon(true);
+            return t;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
+    }
+
+    /** 仅供测试：确认生产实例也开启了取消即移除策略 */
+    static boolean isRemoveOnCancelEnabled() {
+        return WATCHDOG.getRemoveOnCancelPolicy();
+    }
+
     private ProcessRunner() {
     }
 
@@ -45,12 +78,7 @@ public final class ProcessRunner {
         StringBuilder captured = new StringBuilder();
         AtomicBoolean killed = new AtomicBoolean(false);
 
-        ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "proc-watchdog");
-            t.setDaemon(true);
-            return t;
-        });
-        ScheduledFuture<?> killer = watchdog.schedule(() -> {
+        ScheduledFuture<?> killer = WATCHDOG.schedule(() -> {
             killed.set(true);
             log.warn("子进程超时（{}s），强制终止: {}", timeout.toSeconds(), command.get(0));
             killTree(process);
@@ -86,7 +114,6 @@ public final class ProcessRunner {
             return new ProcessResult(process.exitValue(), captured.toString());
         } finally {
             killer.cancel(false);
-            watchdog.shutdownNow();
             if (process.isAlive()) {
                 killTree(process);
             }

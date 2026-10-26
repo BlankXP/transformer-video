@@ -13,6 +13,8 @@ app:
   max-video-duration: ${MAX_VIDEO_DURATION:3600}
   audio-segment-duration: ${AUDIO_SEGMENT_DURATION:300}
   asr-model: ${ASR_MODEL:paraformer-realtime-v2}
+  # 每次推 3200 字节≈0.1s 音频，100ms 就是 1:1 实时（长视频最大瓶颈）；20ms≈5 倍速，0=尽快推完
+  asr-push-interval-ms: ${ASR_PUSH_INTERVAL_MS:20}
   translation-model: ${TRANSLATION_MODEL:qwen-plus}
   # 以下三项没有默认值：未配置或强度不足时应用拒绝启动，见 StartupConfigValidator
   auth-username: ${AUTH_USERNAME:admin}
@@ -20,3 +22,7 @@ app:
   jwt-secret: ${JWT_SECRET:}
   jwt-expiration: ${JWT_EXPIRATION:86400000}
   task-retention-hours: ${TASK_RETENTION_HOURS:24}
+  # 仅当前置可信代理会覆盖写入 X-Real-IP 时开启；同源单体直连时保持 false，否则限流键可被伪造
+  trust-proxy-headers: ${TRUST_PROXY_HEADERS:false}
+  # 前后端分离部署时才需要（逗号分隔）；同源单容器保持为空，不产生任何 CORS 头
+  allowed-origins: ${ALLOWED_ORIGINS:}

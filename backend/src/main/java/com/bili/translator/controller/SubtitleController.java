@@ -6,6 +6,7 @@ import com.bili.translator.pipeline.PipelineProcessor;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +29,8 @@ public class SubtitleController {
     @GetMapping("/{taskId}/srt")
     public ResponseEntity<Resource> downloadSrt(@PathVariable String taskId) {
         TaskResult result = processor.getTaskResult(taskId);
-        if (result == null) {
+        if (result == null || result.getSrtPath() == null) {
+            // 任务仍在跑（尚未生成字幕）或已跳过字幕阶段时，srt_path 为 null
             return ResponseEntity.notFound().build();
         }
 
@@ -65,7 +67,14 @@ public class SubtitleController {
 
     @PutMapping("/{taskId}")
     public ResponseEntity<Map<String, String>> saveSubtitle(@PathVariable String taskId, @RequestBody List<SubtitleEntry> subtitles) {
-        boolean success = processor.updateSubtitles(taskId, subtitles);
+        boolean success;
+        try {
+            success = processor.updateSubtitles(taskId, subtitles);
+        } catch (IllegalStateException e) {
+            // 任务存在但写盘失败：404 会误导前端以为任务没了，这里明确区分
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
         if (!success) {
             return ResponseEntity.notFound().build();
         }
