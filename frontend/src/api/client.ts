@@ -1,4 +1,4 @@
-import type { ProcessRequest, TaskStatus, SubtitleEntry } from '../types';
+import type { ProcessRequest, TaskDetail, TaskSummary, SubtitleEntry } from '../types';
 
 // 默认留空表示同源：生产由 nginx 把 /api 与 /ws 转发到后端，开发由 vite proxy 兜住。
 // 仅在前端与后端分离部署（不同域名）时才需要设置 VITE_API_BASE_URL（构建期生效）。
@@ -101,8 +101,8 @@ export function submitTask(payload: ProcessRequest): Promise<{ task_id: string; 
   });
 }
 
-export function listTasks(): Promise<TaskStatus[]> {
-  return request<TaskStatus[]>('/api/video/tasks');
+export function listTasks(): Promise<TaskSummary[]> {
+  return request<TaskSummary[]>('/api/video/tasks');
 }
 
 export function retryTask(taskId: string): Promise<{ task_id: string }> {
@@ -113,47 +113,30 @@ export function deleteTask(taskId: string): Promise<void> {
   return request<void>(`/api/video/${taskId}`, { method: 'DELETE' });
 }
 
-export function getTaskStatus(taskId: string): Promise<TaskStatus> {
-  return request<TaskStatus>(`/api/video/${taskId}/status`);
+export function getTaskStatus(taskId: string): Promise<TaskDetail> {
+  return request<TaskDetail>(`/api/video/${taskId}/status`);
 }
 
-export type DownloadKind = 'srt' | 'txt' | 'burned';
+export type DownloadKind = 'srt' | 'txt' | 'burned' | 'video';
 
 /**
  * 下载文件。
  *
- * <p>用 fetch 携带 Authorization 头取回 blob，再用临时 objectURL 触发保存；
- * 令牌不会出现在 URL、浏览器历史或代理访问日志里。
+ * <p>先用登录态换一张一次性票据（120 秒、用一次即失效），再让浏览器用 `<a href>`
+ * 直链下载：文件由浏览器流式写盘，不会整个读进内存，JWT 也不会出现在 URL 里。
  */
 export async function downloadFile(taskId: string, kind: DownloadKind, filename: string): Promise<void> {
-  const path = kind === 'burned'
-    ? `/api/video/${taskId}/burned`
-    : `/api/subtitle/${taskId}/${kind}`;
+  const { ticket } = await request<{ ticket: string; expires_in: number }>('/api/download-ticket', {
+    method: 'POST',
+    body: { task_id: taskId, kind },
+  });
 
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, { headers: authHeaders() });
-  } catch {
-    throw new Error('无法连接到服务器，请检查网络后重试');
-  }
-
-  if (response.status === 401) {
-    removeToken();
-    throw new AuthError('登录已过期，请重新登录');
-  }
-  if (!response.ok) {
-    throw new Error(`下载失败（HTTP ${response.status}）`);
-  }
-
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = objectUrl;
+  link.href = `${API_BASE_URL}/api/download/${ticket}`;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(objectUrl);
 }
 
 export function saveSubtitle(taskId: string, subtitles: SubtitleEntry[]): Promise<{ message: string }> {

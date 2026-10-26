@@ -1,10 +1,10 @@
 import { useState, useCallback } from "react";
-import type { TaskStatus, ProcessRequest } from "../types";
+import type { TaskDetail, ProcessRequest } from "../types";
 import { submitTask, getTaskStatus } from "../api/client";
 
 export default function useTask() {
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [status, setStatus] = useState<TaskStatus | null>(null);
+  const [status, setStatus] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

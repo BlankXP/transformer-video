@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { listTasks, retryTask, deleteTask } from "../api/client";
-import type { TaskStatus, TaskStage } from "../types";
+import type { TaskSummary, TaskStage } from "../types";
 
 const STAGE_LABELS: Record<string, string> = {
   downloading: "下载视频",
@@ -34,10 +34,12 @@ interface Props {
   onTaskSelect: (taskId: string) => void;
   onRetry: (taskId: string) => void;
   onDelete: (taskId: string) => void;
+  /** 操作失败原因冒泡到全局 toast，保留后端 409「任务正在处理中」等具体文案 */
+  onError: (message: string) => void;
 }
 
-function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Props) {
-  const [tasks, setTasks] = useState<TaskStatus[]>([]);
+function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete, onError }: Props) {
+  const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
@@ -57,10 +59,28 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Pr
     }
   }, [authenticated]);
 
+  // 页面隐藏时暂停轮询，切回时立即补一次，避免后台标签页白白拉任务列表
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(fetchTasks, 10000);
-    return () => clearInterval(interval);
+
+    const tick = () => {
+      if (document.visibilityState === "visible") {
+        fetchTasks();
+      }
+    };
+    const interval = window.setInterval(tick, 10000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchTasks();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchTasks]);
 
   const handleRetry = async (taskId: string) => {
@@ -70,7 +90,7 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Pr
       onRetry(taskId);
       await fetchTasks();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "重试失败");
+      onError(e instanceof Error ? e.message : "重试失败");
     } finally {
       setRetrying(null);
     }
@@ -83,8 +103,8 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Pr
       await deleteTask(taskId);
       onDelete(taskId);
       await fetchTasks();
-    } catch {
-      alert("删除失败");
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : "删除失败");
     } finally {
       setDeleting(null);
     }
@@ -127,7 +147,7 @@ function TaskHistoryPanel({ authenticated, onTaskSelect, onRetry, onDelete }: Pr
                   <span className="text-xs text-gray-400">{formatTime(task.created_at)}</span>
                 </div>
                 <p className="text-sm text-gray-700 truncate mt-1">
-                  {task.request?.url || task.task_id}
+                  {task.url || task.task_id}
                 </p>
                 {task.stage === "failed" && task.message && (
                   <p className="text-xs text-red-500 truncate mt-0.5">{task.message}</p>
