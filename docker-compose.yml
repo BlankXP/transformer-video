@@ -1,10 +1,12 @@
 services:
   backend:
     build:
-      context: ./backend
-    # 只在内网暴露，由 frontend 的 nginx 转发；调试时临时改成 ports: ["8000:8000"]
-    expose:
-      - "8000"
+      # 前端已合并进后端：构建上下文为仓库根目录，镜像内先构建前端再打进 jar
+      context: .
+      dockerfile: backend/Dockerfile
+    # 单容器同时提供页面、API 与 WebSocket，直接对外暴露 80
+    ports:
+      - "80:8000"
     volumes:
       - ./backend/temp:/app/temp
     env_file:
@@ -15,14 +17,4 @@ services:
       timeout: 5s
       retries: 12
       start_period: 40s
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
-    ports:
-      - "80:80"
-    depends_on:
-      backend:
-        condition: service_healthy
     restart: unless-stopped
