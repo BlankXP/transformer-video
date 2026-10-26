@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { TaskStage } from "../types";
-import { getTaskStatus, getToken } from "../api/client";
+import { AuthError, getTaskStatus, getToken } from "../api/client";
 
 interface WebSocketMessage {
   task_id: string;
@@ -33,6 +33,7 @@ export default function useWebSocket(taskId: string | null) {
     }
 
     let closed = false;
+    let terminal = false;
     let retries = 0;
     let reconnectTimer: number | undefined;
     let pollTimer: number | undefined;
@@ -57,8 +58,13 @@ export default function useWebSocket(taskId: string | null) {
           if (TERMINAL_STAGES.includes(status.stage)) {
             stopPolling();
           }
-        } catch {
-          // 单次轮询失败忽略，下一轮继续
+        } catch (e) {
+          // 登录过期时停止轮询：否则每 3 秒一次 401 会无限空转，用户也不知道该重新登录
+          if (e instanceof AuthError) {
+            stopPolling();
+            return;
+          }
+          // 其它错误（网络抖动等）忽略，下一轮继续
         }
       }, POLL_INTERVAL_MS);
     };
@@ -83,6 +89,11 @@ export default function useWebSocket(taskId: string | null) {
           setStage(data.stage);
           setProgress(data.progress);
           setMessage(data.message);
+          if (TERMINAL_STAGES.includes(data.stage)) {
+            // 终态后服务端不再推送，主动断开，避免空挂到代理超时再触发无谓重连
+            terminal = true;
+            ws.close();
+          }
         } catch {
           // 忽略无法解析的消息
         }
@@ -93,7 +104,7 @@ export default function useWebSocket(taskId: string | null) {
 
       ws.onclose = () => {
         setConnected(false);
-        if (closed) return;
+        if (closed || terminal) return;
 
         retries += 1;
         if (retries > MAX_RETRIES) {

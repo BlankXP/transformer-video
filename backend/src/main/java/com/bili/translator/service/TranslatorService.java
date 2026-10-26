@@ -282,10 +282,12 @@ public class TranslatorService {
      *
      * <p>按编号归位而非按行顺序取用；编号缺失或内容为空时抛异常，
      * 由 {@link #translateBatch} 的有限次重试与拆批逻辑兜住，避免静默产出错位字幕。
+     *
+     * <p>包级可见（而非 private）：纯函数、无外部依赖，单独用单测覆盖各种畸形输出。
      */
     private static final Pattern NUMBERED_LINE = Pattern.compile("^\\[(\\d+)\\]\\s*(.*)$");
 
-    private List<String> parseTranslated(String text, int expectedCount) {
+    static List<String> parseTranslated(String text, int expectedCount) {
         Map<Integer, String> byIndex = new TreeMap<>();
         Integer current = null;
 

@@ -1,9 +1,12 @@
 package com.bili.translator.controller;
 
 import com.bili.translator.model.ProcessRequest;
+import com.bili.translator.model.TaskDetail;
 import com.bili.translator.model.TaskResult;
 import com.bili.translator.model.TaskStatus;
+import com.bili.translator.model.TaskSummary;
 import com.bili.translator.pipeline.PipelineProcessor;
+import com.bili.translator.util.ByteRange;
 import com.bili.translator.util.VideoUrlValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -51,13 +54,19 @@ public class VideoController {
             return ResponseEntity.ok(Map.of("task_id", created.taskId(), "already_exists", true));
         }
 
-        processor.process(created.taskId(), request);
+        try {
+            processor.launch(created.taskId(), request);
+        } catch (PipelineProcessor.TaskRejectedException e) {
+            // 任务已落库并回滚为 failed，前端可稍后重试，不会卡在 downloading
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", e.getMessage()));
+        }
         return ResponseEntity.ok(Map.of("task_id", created.taskId()));
     }
 
     @GetMapping("/tasks")
-    public ResponseEntity<List<TaskStatus>> listTasks() {
-        return ResponseEntity.ok(processor.getAllTasks());
+    public ResponseEntity<List<TaskSummary>> listTasks() {
+        return ResponseEntity.ok(processor.listSummaries());
     }
 
     @GetMapping("/find")
@@ -85,28 +94,35 @@ public class VideoController {
         }
 
         ProcessRequest request = status.getRequest();
+        if (request == null) {
+            return ResponseEntity.status(400).body(Map.of("error", "任务请求参数缺失，无法重试"));
+        }
 
         status.setStage("downloading");
         status.setProgress(0.0);
         status.setMessage("正在重试任务...");
         processor.persistTask(taskId);
 
-        if (request != null) {
-            processor.process(taskId, request);
-        } else {
-            return ResponseEntity.status(400).body(Map.of("error", "任务请求参数缺失，无法重试"));
+        try {
+            processor.launch(taskId, request);
+        } catch (IllegalStateException e) {
+            // 并发重试：另一个请求已经占用了该任务
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+        } catch (PipelineProcessor.TaskRejectedException e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", e.getMessage()));
         }
 
         return ResponseEntity.ok(Map.of("task_id", taskId));
     }
 
     @GetMapping("/{taskId}/status")
-    public ResponseEntity<TaskStatus> getTaskStatus(@PathVariable String taskId) {
+    public ResponseEntity<TaskDetail> getTaskStatus(@PathVariable String taskId) {
         TaskStatus status = processor.getTaskStatus(taskId);
         if (status == null) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(status);
+        return ResponseEntity.ok(processor.toDetail(status));
     }
 
     @DeleteMapping("/{taskId}")
@@ -142,51 +158,42 @@ public class VideoController {
             return ResponseEntity.internalServerError().build();
         }
 
-        String rangeHeader = request.getHeader("Range");
+        ByteRange range = ByteRange.parse(request.getHeader("Range"), fileSize);
 
-        if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-            try {
-                String byteRange = rangeHeader.substring(6);
-                String[] parts = byteRange.split("-");
-                long start = Long.parseLong(parts[0].trim());
-                long end = parts.length > 1 && !parts[1].isBlank()
-                        ? Long.parseLong(parts[1].trim()) : fileSize - 1;
-
-                if (start >= fileSize || end >= fileSize || start > end) {
-                    return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
-                            .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileSize)
-                            .build();
-                }
-
-                long contentLength = end - start + 1;
-
-                StreamingResponseBody body = outputStream -> {
-                    try (RandomAccessFile raf = new RandomAccessFile(videoPath.toFile(), "r")) {
-                        raf.seek(start);
-                        byte[] buffer = new byte[8192];
-                        long remaining = contentLength;
-                        while (remaining > 0) {
-                            int toRead = (int) Math.min(buffer.length, remaining);
-                            int read = raf.read(buffer, 0, toRead);
-                            if (read == -1) break;
-                            outputStream.write(buffer, 0, read);
-                            remaining -= read;
-                        }
-                        outputStream.flush();
-                    } catch (IOException e) {
-                        log.debug("视频流写入中断 (客户端断开): {}", e.getMessage());
-                    }
-                };
-
-                return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
-                        .header(HttpHeaders.CONTENT_TYPE, "video/mp4")
-                        .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
-                        .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize)
-                        .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-                        .body(body);
-            } catch (NumberFormatException e) {
-                log.warn("无效的 Range 头: {}", rangeHeader);
+        if (range != null) {
+            if (!range.satisfiable()) {
+                return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                        .header(HttpHeaders.CONTENT_RANGE, "bytes */" + fileSize)
+                        .build();
             }
+
+            long start = range.start();
+            long contentLength = range.length();
+
+            StreamingResponseBody body = outputStream -> {
+                try (RandomAccessFile raf = new RandomAccessFile(videoPath.toFile(), "r")) {
+                    raf.seek(start);
+                    byte[] buffer = new byte[8192];
+                    long remaining = contentLength;
+                    while (remaining > 0) {
+                        int toRead = (int) Math.min(buffer.length, remaining);
+                        int read = raf.read(buffer, 0, toRead);
+                        if (read == -1) break;
+                        outputStream.write(buffer, 0, read);
+                        remaining -= read;
+                    }
+                    outputStream.flush();
+                } catch (IOException e) {
+                    log.debug("视频流写入中断 (客户端断开): {}", e.getMessage());
+                }
+            };
+
+            return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                    .header(HttpHeaders.CONTENT_TYPE, "video/mp4")
+                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength))
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + range.end() + "/" + fileSize)
+                    .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+                    .body(body);
         }
 
         StreamingResponseBody body = outputStream -> {
@@ -207,6 +214,31 @@ public class VideoController {
                 .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileSize))
                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                 .body(body);
+    }
+
+    /**
+     * 下载原始视频（未烧录字幕）。
+     *
+     * <p>此前「仅下载、不翻译」模式没有任何下载入口：{@code /stream} 只能在线播放，
+     * {@code /burned} 在未烧录时不存在，用户只能对着播放器另存。
+     */
+    @GetMapping("/{taskId}/download")
+    public ResponseEntity<Resource> downloadVideo(@PathVariable String taskId) {
+        TaskResult result = processor.getTaskResult(taskId);
+        if (result == null || result.getVideoPath() == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Path videoPath = Path.of(result.getVideoPath());
+        if (!Files.exists(videoPath)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Resource resource = new FileSystemResource(videoPath);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + taskId + "_video.mp4\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
     }
 
     @GetMapping("/{taskId}/burned")

@@ -1,0 +1,17 @@
+# 构建上下文是仓库根目录：backend 镜像需要同时拿到 frontend 源码来构建静态资源
+**/node_modules
+**/dist
+**/target
+**/temp
+**/.env
+**/.git
+**/.gitignore
+**/*.log
+**/.idea
+**/.vscode
+**/*.iml
+# 本地构建残留，避免被 COPY backend/src 带进镜像（镜像内的 static 来自 frontend 构建阶段）
+backend/src/main/resources/static
+.workbuddy
+.screenshots
+docs

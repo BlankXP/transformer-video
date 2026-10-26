@@ -45,11 +45,10 @@ function App() {
   }, [stage, taskId, refreshStatus]);
 
   useEffect(() => {
-    if (status?.result) {
-      setSubtitles(status.result.subtitles || []);
-      if (status.result.video_path) {
-        setVideoUrl(`${API_BASE_URL}/api/video/${taskId}/stream`);
-      }
+    if (status) {
+      setSubtitles(status.subtitles || []);
+      // 是否有可播放视频看 has_video：服务器路径已不再下发到浏览器
+      setVideoUrl(status.has_video ? `${API_BASE_URL}/api/video/${taskId}/stream` : null);
     } else {
       setSubtitles([]);
       setVideoUrl(null);
@@ -133,6 +132,9 @@ function App() {
     }
   };
 
+  // 子组件操作失败统一走全局 toast（不再用原生 alert）
+  const showError = (text: string) => setToast({ text, type: "error" });
+
   const toastNode = toast ? (
     <div
       className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-sm text-white shadow-lg transition ${
@@ -202,8 +204,14 @@ function App() {
         {authenticated && (
           <SubtitleEditor subtitles={subtitles} onSave={handleSaveSubtitles} disabled={loading} />
         )}
-        <DownloadPanel taskId={taskId} subtitles={subtitles} result={status?.result} />
-        <TaskHistoryPanel authenticated={authenticated} onTaskSelect={handleTaskSelect} onRetry={handleRetry} onDelete={handleDelete} />
+        <DownloadPanel taskId={taskId} task={status} />
+        <TaskHistoryPanel
+          authenticated={authenticated}
+          onTaskSelect={handleTaskSelect}
+          onRetry={handleRetry}
+          onDelete={handleDelete}
+          onError={showError}
+        />
       </main>
     </div>
   );

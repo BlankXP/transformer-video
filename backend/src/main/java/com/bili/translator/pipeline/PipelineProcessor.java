@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +20,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -30,9 +32,11 @@ public class PipelineProcessor {
     private static final Logger log = LoggerFactory.getLogger(PipelineProcessor.class);
     private static final String COMPLETED_STEPS_SEP = ",";
     private static final String META_FILE = "task_meta.json";
+    /** 任务键归一化用的正则：编译一次，避免每次提交都重新编译 */
+    private static final Pattern BV_PATTERN = Pattern.compile("(BV[a-zA-Z0-9]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern AV_PATTERN = Pattern.compile("av(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private final ConcurrentHashMap<String, TaskStatus> tasks = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, ProgressCallback> progressCallbacks = new ConcurrentHashMap<>();
     /** 任务键（URL + 是否翻译 + 目标语言）-> taskId，用于原子查重 */
     private final ConcurrentHashMap<String, String> taskKeyIndex = new ConcurrentHashMap<>();
     /** 正在执行的 taskId，删除时用于拒绝 */
@@ -50,6 +54,7 @@ public class PipelineProcessor {
     private final SubtitleGenerator subtitleGenerator;
     private final SubtitleBurner subtitleBurner;
     private final ProgressWebSocketHandler webSocketHandler;
+    private final Executor taskExecutor;
 
     public PipelineProcessor(AppProperties appProperties, FileManager fileManager,
                               VideoDownloader videoDownloader, AudioExtractor audioExtractor,
@@ -57,7 +62,8 @@ public class PipelineProcessor {
                               TranslatorService translatorService,
                               SubtitleGenerator subtitleGenerator,
                               SubtitleBurner subtitleBurner,
-                              ProgressWebSocketHandler webSocketHandler) {
+                              ProgressWebSocketHandler webSocketHandler,
+                              @Qualifier("taskExecutor") Executor taskExecutor) {
         this.appProperties = appProperties;
         this.fileManager = fileManager;
         this.videoDownloader = videoDownloader;
@@ -67,6 +73,7 @@ public class PipelineProcessor {
         this.subtitleGenerator = subtitleGenerator;
         this.subtitleBurner = subtitleBurner;
         this.webSocketHandler = webSocketHandler;
+        this.taskExecutor = taskExecutor;
     }
 
     @PostConstruct
@@ -86,6 +93,13 @@ public class PipelineProcessor {
                         String json = Files.readString(metaFile);
                         TaskStatus status = objectMapper.readValue(json, TaskStatus.class);
                         if (status != null && status.getTaskId() != null) {
+                            if (status.getCreatedAt() <= 0) {
+                                // 老版本元数据缺 createdAt：用文件修改时间兜底，否则
+                                // cleanupExpiredTasks 里的 createdAt > 0 过滤会让这条任务永不清理。
+                                // 用文件时间而不是当前时间，避免每次重启都给它续命一个保留周期。
+                                long fallback = lastModifiedMillis(metaFile);
+                                status.setCreatedAt(fallback > 0 ? fallback : System.currentTimeMillis());
+                            }
                             if ("failed".equals(status.getStage())) {
                                 registerTask(status);
                             } else if (!"completed".equals(status.getStage())) {
@@ -104,6 +118,14 @@ public class PipelineProcessor {
             });
         } catch (Exception e) {
             log.warn("扫描任务目录失败", e);
+        }
+    }
+
+    private static long lastModifiedMillis(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toMillis();
+        } catch (Exception e) {
+            return 0;
         }
     }
 
@@ -197,10 +219,55 @@ public class PipelineProcessor {
         return status != null ? status.getResult() : null;
     }
 
-    public List<TaskStatus> getAllTasks() {
-        List<TaskStatus> list = new ArrayList<>(tasks.values());
-        list.sort((a, b) -> Long.compare(b.getCreatedAt(), a.getCreatedAt()));
-        return list;
+    /** 任务列表：只回摘要，不带字幕与服务器路径 */
+    public List<TaskSummary> listSummaries() {
+        return tasks.values().stream()
+                .map(PipelineProcessor::toSummary)
+                .sorted(Comparator.comparingLong(TaskSummary::createdAt).reversed())
+                .toList();
+    }
+
+    /** 任务详情：摘要 + 字幕内容（前端编辑器需要） */
+    public TaskDetail toDetail(TaskStatus status) {
+        TaskSummary summary = toSummary(status);
+        TaskResult result = status.getResult();
+        List<SubtitleEntry> subtitles = result != null && result.getSubtitles() != null
+                ? result.getSubtitles()
+                : List.of();
+        return new TaskDetail(
+                summary.taskId(), summary.stage(), summary.progress(), summary.message(),
+                summary.createdAt(), summary.url(), summary.targetLanguage(), summary.translateSubtitles(),
+                summary.hasVideo(), summary.hasBurnedVideo(), summary.hasSrt(), summary.hasRecognizedText(),
+                summary.duration(), subtitles);
+    }
+
+    private static TaskSummary toSummary(TaskStatus status) {
+        TaskResult result = status.getResult();
+        ProcessRequest request = status.getRequest();
+        List<SubtitleEntry> subtitles = result != null ? result.getSubtitles() : null;
+        return new TaskSummary(
+                status.getTaskId(),
+                status.getStage(),
+                status.getProgress(),
+                status.getMessage(),
+                status.getCreatedAt(),
+                request != null ? request.getUrl() : null,
+                request != null ? request.getTargetLanguage() : null,
+                request != null && request.isTranslateSubtitles(),
+                hasPath(result != null ? result.getVideoPath() : null),
+                hasPath(result != null ? result.getBurnedVideoPath() : null),
+                hasPath(result != null ? result.getSrtPath() : null),
+                hasPath(result != null ? result.getRecognizedTextPath() : null),
+                result != null ? result.getDuration() : 0,
+                subtitles != null ? subtitles.size() : 0);
+    }
+
+    /**
+     * 只判断路径是否被记录过，不 stat 磁盘——列表接口里每个任务 4 次 IO 不值得；
+     * 文件若被外部删除，下载端点会自然返回 404。
+     */
+    private static boolean hasPath(String path) {
+        return path != null && !path.isBlank();
     }
 
     public TaskStatus findByUrl(String url) {
@@ -216,17 +283,20 @@ public class PipelineProcessor {
         return null;
     }
 
-    private String normalizeUrl(String url) {
+    /**
+     * 任务键归一化：BV/av 号直接提取编号，其它 URL 去掉协议、www 前缀、查询串与尾部斜杠。
+     *
+     * <p>包级静态：调用方不依赖实例状态，单测可直接覆盖。
+     */
+    static String normalizeUrl(String url) {
         if (url == null || url.isBlank()) return "";
 
-        Pattern bvPattern = Pattern.compile("(BV[a-zA-Z0-9]+)", Pattern.CASE_INSENSITIVE);
-        Matcher bvMatcher = bvPattern.matcher(url);
+        Matcher bvMatcher = BV_PATTERN.matcher(url);
         if (bvMatcher.find()) {
             return bvMatcher.group(1).toUpperCase();
         }
 
-        Pattern avPattern = Pattern.compile("av(\\d+)", Pattern.CASE_INSENSITIVE);
-        Matcher avMatcher = avPattern.matcher(url);
+        Matcher avMatcher = AV_PATTERN.matcher(url);
         if (avMatcher.find()) {
             return "AV" + avMatcher.group(1);
         }
@@ -237,27 +307,12 @@ public class PipelineProcessor {
         return normalized;
     }
 
-    public void registerProgressCallback(String taskId, ProgressCallback callback) {
-        progressCallbacks.put(taskId, callback);
-    }
-
-    public void unregisterProgressCallback(String taskId) {
-        progressCallbacks.remove(taskId);
-    }
-
     private void notifyProgress(String taskId, String stage, float progress, String message) {
         TaskStatus status = tasks.get(taskId);
         if (status != null) {
             status.setStage(stage);
             status.setProgress(progress);
             status.setMessage(message);
-        }
-
-        ProgressCallback callback = progressCallbacks.get(taskId);
-        if (callback != null) {
-            try {
-                callback.accept(taskId, stage, progress, message);
-            } catch (Exception ignored) {}
         }
 
         webSocketHandler.sendProgress(taskId, stage, progress, message);
@@ -283,17 +338,83 @@ public class PipelineProcessor {
         persistTask(taskId);
     }
 
-    @Async
-    public void process(String taskId, ProcessRequest request) {
-        runningTasks.add(taskId);
+    /**
+     * 占用任务并提交异步执行。
+     *
+     * <p>先占位再提交：{@link #deleteTask(String)} 依赖 {@code runningTasks} 拒绝运行中任务，
+     * 这一步消除了「任务已创建、异步线程还没开始跑」这段窗口期被删除、随后流水线继续执行的竞态。
+     *
+     * <p>这里显式使用注入的 Executor 而不是 {@code @Async}：同类内部调用不会经过 Spring 代理，
+     * 标注 {@code @Async} 也不会异步执行。
+     *
+     * @throws IllegalStateException    任务已在执行中（并发重试）
+     * @throws TaskRejectedException    线程池队列已满，任务已回滚为可重试的 failed
+     */
+    public void launch(String taskId, ProcessRequest request) {
+        if (!runningTasks.add(taskId)) {
+            throw new IllegalStateException("任务已在执行中");
+        }
         try {
-            runPipeline(taskId, request);
-        } finally {
+            taskExecutor.execute(() -> {
+                try {
+                    runPipeline(taskId, request);
+                } finally {
+                    runningTasks.remove(taskId);
+                }
+            });
+        } catch (RuntimeException e) {
+            // 提交失败必须回滚占位，否则任务既跑不起来也删不掉
             runningTasks.remove(taskId);
+            boolean rejected = e instanceof org.springframework.core.task.TaskRejectedException
+                    || e instanceof RejectedExecutionException;
+            if (rejected) {
+                failTask(taskId, "服务器繁忙，任务未能启动，请稍后重试");
+                throw new TaskRejectedException("任务队列已满，请稍后重试", e);
+            }
+            throw e;
         }
     }
 
+    /**
+     * 线程池拒绝接收任务（队列已满）。
+     *
+     * <p>抛出前任务已被回滚为 {@code failed}，因此前端可以直接重试，不会停在 downloading。
+     */
+    public static class TaskRejectedException extends RuntimeException {
+        public TaskRejectedException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    /** 提交失败时把任务置为可重试的 failed，避免停在 downloading 后无法自愈 */
+    private void failTask(String taskId, String message) {
+        notifyProgress(taskId, "failed", 0.0f, message);
+        persistTask(taskId);
+    }
+
+    /**
+     * 取任务状态并确保 result 已初始化。
+     *
+     * <p>流水线运行期间任务可能被删除（或服务重启后未加载），此时返回 null，
+     * 调用方应立即结束本次执行，避免 NPE 被外层 catch 吞成一条 error 日志。
+     */
+    private TaskStatus taskWithResult(String taskId) {
+        TaskStatus status = tasks.get(taskId);
+        if (status == null) {
+            log.info("任务已不存在，终止流水线: {}", taskId);
+            return null;
+        }
+        if (status.getResult() == null) {
+            status.setResult(new TaskResult());
+        }
+        return status;
+    }
+
     private void runPipeline(String taskId, ProcessRequest request) {
+        if (tasks.get(taskId) == null) {
+            log.info("任务在开始执行前已被删除，跳过: {}", taskId);
+            return;
+        }
         Set<String> completed = getCompletedSteps(taskId);
         Path taskDir = fileManager.createTaskDir(taskId);
         Path videoPath = taskDir.resolve("video.mp4");
@@ -313,15 +434,14 @@ public class PipelineProcessor {
                 }
                 notifyProgress(taskId, "downloading", request.isTranslateSubtitles() ? 0.25f : 0.95f, "视频下载完成");
 
-                TaskStatus status = tasks.get(taskId);
-                if (status.getResult() == null) status.setResult(new TaskResult());
+                TaskStatus status = taskWithResult(taskId);
+                if (status == null) return;
                 status.getResult().setVideoPath(videoPath.toString());
                 markStepCompleted(taskId, "downloading");
             }
 
             if (!request.isTranslateSubtitles()) {
-                TaskStatus status = tasks.get(taskId);
-                if (status.getResult() == null) status.setResult(new TaskResult());
+                if (taskWithResult(taskId) == null) return;
                 notifyProgress(taskId, "completed", 1.0f, "视频下载完成");
                 persistTask(taskId);
                 return;
@@ -332,7 +452,8 @@ public class PipelineProcessor {
                 audioExtractor.extract(videoPath, audioPath);
                 notifyProgress(taskId, "extracting_audio", 0.30f, "音频提取完成");
 
-                TaskStatus status = tasks.get(taskId);
+                TaskStatus status = taskWithResult(taskId);
+                if (status == null) return;
                 status.getResult().setAudioPath(audioPath.toString());
                 markStepCompleted(taskId, "extracting_audio");
             }
@@ -354,7 +475,8 @@ public class PipelineProcessor {
                     }
                 }
 
-                TaskStatus status = tasks.get(taskId);
+                TaskStatus status = taskWithResult(taskId);
+                if (status == null) return;
                 status.getResult().setRecognizedTextPath(recognizedTextPath.toString());
                 markStepCompleted(taskId, "recognizing");
             }
@@ -382,14 +504,20 @@ public class PipelineProcessor {
                     subtitleEntries.add(entry);
                 }
 
-                TaskStatus status = tasks.get(taskId);
+                TaskStatus status = taskWithResult(taskId);
+                if (status == null) return;
                 status.getResult().setSubtitles(subtitleEntries);
                 markStepCompleted(taskId, "translating");
             }
 
             if (!completed.contains("generating_subtitle")) {
-                TaskStatus status = tasks.get(taskId);
+                TaskStatus status = taskWithResult(taskId);
+                if (status == null) return;
                 List<SubtitleEntry> subtitleEntries = status.getResult().getSubtitles();
+                if (subtitleEntries == null) {
+                    // 重试时若 translating 被标记完成但字幕未能持久化，空列表比 NPE 更安全
+                    subtitleEntries = new ArrayList<>();
+                }
 
                 notifyProgress(taskId, "generating_subtitle", 0.85f, "开始生成字幕文件");
                 subtitleGenerator.generateSrt(subtitleEntries, srtPath, true);
@@ -400,7 +528,8 @@ public class PipelineProcessor {
             }
 
             if (!completed.contains("burning_subtitle")) {
-                TaskStatus status = tasks.get(taskId);
+                TaskStatus status = taskWithResult(taskId);
+                if (status == null) return;
 
                 notifyProgress(taskId, "burning_subtitle", 0.90f, "开始烧录字幕到视频");
                 try {
@@ -414,10 +543,15 @@ public class PipelineProcessor {
                 markStepCompleted(taskId, "burning_subtitle");
             }
 
-            TaskStatus status = tasks.get(taskId);
-            TaskResult result = status.getResult();
-            if (Files.exists(audioPath)) {
-                result.setDuration(audioExtractor.getDuration(audioPath));
+            TaskStatus status = taskWithResult(taskId);
+            if (status != null && Files.exists(audioPath)) {
+                // 收尾取时长失败（ffprobe 报错 / 文件被占用）只影响时长展示，
+                // 不能把已经烧录成功的任务整体标成 failed
+                try {
+                    status.getResult().setDuration(audioExtractor.getDuration(audioPath));
+                } catch (Exception e) {
+                    log.warn("获取音频时长失败，时长降级为 0: taskId={}, reason={}", taskId, e.getMessage());
+                }
             }
             notifyProgress(taskId, "completed", 1.0f, "处理完成");
             persistTask(taskId);
@@ -481,21 +615,31 @@ public class PipelineProcessor {
         }
     }
 
+    /**
+     * 覆盖任务字幕并重写 SRT 文件。
+     *
+     * <p>先写盘、成功后再改内存，避免写盘失败时内存字幕与磁盘 SRT 不一致。
+     *
+     * @return false 表示任务不存在或尚未产生结果
+     * @throws IllegalStateException 字幕写盘失败
+     */
     public boolean updateSubtitles(String taskId, List<SubtitleEntry> subtitles) {
         TaskStatus status = tasks.get(taskId);
         if (status == null || status.getResult() == null) return false;
 
-        status.getResult().setSubtitles(subtitles);
         Path taskDir = fileManager.createTaskDir(taskId);
         Path srtPath = taskDir.resolve("subtitles.srt");
         try {
             subtitleGenerator.generateSrt(subtitles, srtPath, true);
-            status.getResult().setSrtPath(srtPath.toString());
-            persistTask(taskId);
-            return true;
         } catch (Exception e) {
-            return false;
+            log.error("字幕写盘失败: taskId={}, path={}", taskId, srtPath, e);
+            throw new IllegalStateException("字幕保存失败，请稍后重试", e);
         }
+
+        status.getResult().setSubtitles(subtitles);
+        status.getResult().setSrtPath(srtPath.toString());
+        persistTask(taskId);
+        return true;
     }
 
     /**
@@ -511,7 +655,6 @@ public class PipelineProcessor {
         TaskStatus removed = tasks.remove(taskId);
         if (removed == null) return false;
 
-        progressCallbacks.remove(taskId);
         String key = buildTaskKey(removed.getRequest());
         if (key != null) {
             taskKeyIndex.remove(key, taskId);

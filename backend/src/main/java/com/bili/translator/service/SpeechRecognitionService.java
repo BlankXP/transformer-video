@@ -43,7 +43,8 @@ public class SpeechRecognitionService {
     public List<RecognizedItem> recognize(Path audioPath, BiConsumer<Float, String> progressCallback) throws Exception {
         double duration = getAudioDuration(audioPath);
         int segmentDuration = appProperties.getAudioSegmentDuration();
-        log.info("开始语音识别: audioPath={}, duration={}s, segmentDuration={}s", audioPath, duration, segmentDuration);
+        log.info("开始语音识别: audioPath={}, duration={}s, segmentDuration={}s, pushInterval={}ms",
+                audioPath, duration, segmentDuration, appProperties.getAsrPushIntervalMs());
 
         if (duration <= segmentDuration) {
             log.info("音频时长未超过分段阈值，使用单段识别");
@@ -279,6 +280,7 @@ public class SpeechRecognitionService {
         try {
             recognizer.call(param, callback);
 
+            int pushIntervalMs = Math.max(0, appProperties.getAsrPushIntervalMs());
             try (FileInputStream fis = new FileInputStream(audioPath.toFile())) {
                 byte[] buffer = new byte[3200];
                 int bytesRead;
@@ -288,13 +290,15 @@ public class SpeechRecognitionService {
                         : ByteBuffer.wrap(buffer);
                     recognizer.sendAudioFrame(byteBuffer);
                     buffer = new byte[3200];
-                    Thread.sleep(100);
+                    if (pushIntervalMs > 0) {
+                        Thread.sleep(pushIntervalMs);
+                    }
                 }
             }
 
             recognizer.stop();
 
-            // 按音频长度放宽等待：音频按实时速率推送，长音频的最后一条回调可能晚于 300 秒
+            // 回调完成时间取决于服务端处理速度，按音频长度留足余量
             long estimatedSeconds = 0;
             try {
                 // WAV 16kHz / 16bit / 单声道 ≈ 32000 字节每秒
@@ -316,7 +320,16 @@ public class SpeechRecognitionService {
             log.info("语音识别完成, 共{}条句子", results.size());
             return results;
         } finally {
-            recognizer.getDuplexApi().close(1000, "bye");
+            // call() 失败时 duplexApi 可能为 null，直接调 close 会把原始异常覆盖成 NPE，
+            // 排查时只看到空指针、看不到真实原因（比如 apiKey 无效或网络不可达）
+            try {
+                var duplexApi = recognizer.getDuplexApi();
+                if (duplexApi != null) {
+                    duplexApi.close(1000, "bye");
+                }
+            } catch (Exception e) {
+                log.debug("关闭语音识别连接失败: {}", e.getMessage());
+            }
         }
     }
 

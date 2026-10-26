@@ -30,7 +30,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (isWhitelisted(path)) {
+        // 前端已合并进后端：非 /api 路径是 SPA 静态资源、前端路由与 /error，必须放行；
+        // /ws 握手也走这里，其令牌由 WsAuthInterceptor 单独校验。
+        // 约定：所有业务接口都挂在 /api 下，新增接口时不要绕过这个前缀。
+        if (!path.startsWith("/api/")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        if (path.startsWith("/api/auth/")) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -66,19 +74,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         response.getWriter().write("{\"error\":\"" + message + "\"}");
     }
 
-    private boolean isWhitelisted(String path) {
-        return path.startsWith("/api/auth/")
-                || path.startsWith("/ws/")
-                || path.equals("/error");
-    }
-
     /**
      * 免登录路径。
      *
-     * <p>仅保留视频预览：浏览器 {@code <video>} 标签无法附加 Authorization 头，
-     * 而任务状态、查重、任务提交、字幕下载等接口都必须登录。
+     * <p>只有两处：{@code <video>} 预览（标签无法附加请求头），
+     * 以及凭一次性票据下载（浏览器直链同样带不了头，票据本身即凭证，短时且一次性）。
+     * 任务状态、查重、提交、票据申请都必须登录。
      */
     private boolean isPublicAccess(String path) {
-        return path.matches("/api/video/[^/]+/stream");
+        return path.matches("/api/video/[^/]+/stream")
+                || path.matches("/api/download/[^/]+");
     }
 }

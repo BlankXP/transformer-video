@@ -47,7 +47,13 @@ public class ProgressWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        activeConnections.computeIfAbsent(taskId, k -> new CopyOnWriteArrayList<>()).add(session);
+        // 与 afterConnectionClosed 共用同一个 key 锁（compute），
+        // 避免「session 加进了一个刚被移除的列表」这种孤儿条目泄漏
+        activeConnections.compute(taskId, (key, sessions) -> {
+            List<WebSocketSession> list = sessions != null ? sessions : new CopyOnWriteArrayList<>();
+            list.add(session);
+            return list;
+        });
 
         String json = objectMapper.writeValueAsString(Map.of(
                 "task_id", status.getTaskId(),
@@ -61,15 +67,19 @@ public class ProgressWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String taskId = extractTaskId(session);
-        if (taskId != null) {
-            List<WebSocketSession> sessions = activeConnections.get(taskId);
-            if (sessions != null) {
-                sessions.remove(session);
-                if (sessions.isEmpty()) {
-                    activeConnections.remove(taskId);
-                }
-            }
+        if (taskId == null) {
+            return;
         }
+
+        // 复合操作必须原子：get → remove → isEmpty → remove(taskId) 四步之间
+        // 并发 compute 会新建列表并把 session 加进去，随后被整表移除，导致 session 永久泄漏
+        activeConnections.compute(taskId, (key, sessions) -> {
+            if (sessions == null) {
+                return null;
+            }
+            sessions.remove(session);
+            return sessions.isEmpty() ? null : sessions;
+        });
     }
 
     @Override

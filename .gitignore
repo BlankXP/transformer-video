@@ -20,6 +20,9 @@ ENV/
 
 node_modules/
 
+# 前端构建产物：打包时由 Dockerfile 构建阶段拷入，不入库
+backend/src/main/resources/static/
+
 .trae/
 docs/
 .workbuddy/
